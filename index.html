@@ -7,6 +7,27 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  .logo-img {
+    height: 40px;
+    width: auto;
+    vertical-align: middle;
+    margin-right: 15px;
+    display: inline-block;
+  }
+
+  .marquee h1 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-size: 28px;
+    margin: 0;
+    color: var(--amber);
+    
+    display: flex;
+    align-items: center;
+  }
+
   :root{
     --bg: #0f033b;
     --surface: #0f033b;
@@ -93,10 +114,12 @@
 </style>
 </head>
 <body>
-  <div class="app">
     <div class="marquee">
       <div>
-        <h1>★ Recomenda Cine</h1>
+        <h1>
+          <img src="LOGO [SEM BG].png" alt="Logo" class="logo-img"> 
+          Recomenda Cine
+        </h1>
         <p>seu catálogo pessoal de séries e filmes</p>
       </div>
       <div class="menu-wrap">
