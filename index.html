@@ -190,13 +190,21 @@ let watchlist = JSON.parse(localStorage.getItem('watchlist') || '{}');
 
 function save() { localStorage.setItem('watchlist', JSON.stringify(watchlist)); }
 
+// --- FUNÇÃO SUBSTITUÍDA (FIX) ---
 async function fetchTMDB(endpoint) {
-  const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${CONFIG_API_KEY}&language=pt-BR`);
-  if(!res.ok) return { results: [] };
-  return res.json();
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const url = `https://api.themoviedb.org/3/${endpoint}${separator}api_key=${CONFIG_API_KEY}&language=pt-BR`;
+  
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return { results: [] };
+    return res.json();
+  } catch (err) {
+    return { results: [] };
+  }
 }
 
-// --- BUSCA ---
+// --- BUSCA SUBSTITUÍDA (FIX) ---
 const searchBtn = document.getElementById('searchBtn');
 const searchInput = document.getElementById('searchInput');
 
@@ -205,26 +213,33 @@ async function doSearch() {
   if(!q) return;
   
   document.getElementById('searchStatus').innerHTML = 'Buscando...';
+  document.getElementById('searchResults').innerHTML = '';
+  
   const data = await fetchTMDB(`search/multi?query=${encodeURIComponent(q)}`);
-  document.getElementById('searchStatus').innerHTML = '';
   
   const resultsEl = document.getElementById('searchResults');
   resultsEl.innerHTML = '';
   
   if(!data.results || data.results.length === 0) {
-    document.getElementById('searchStatus').innerHTML = 'Nenhum resultado.';
+    document.getElementById('searchStatus').innerHTML = 'Nenhum resultado encontrado.';
     return;
   }
+
+  document.getElementById('searchStatus').innerHTML = '';
 
   data.results.filter(r => r.media_type === 'tv' || r.media_type === 'movie').forEach(item => {
     const key = `${item.media_type}-${item.id}`;
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <div class="poster-wrap"><img src="https://image.tmdb.org/t/p/w300${item.poster_path || ''}" alt=""></div>
+      <div class="poster-wrap">
+        <img src="${item.poster_path ? 'https://image.tmdb.org/t/p/w300' + item.poster_path : 'https://via.placeholder.com/300x450?text=Sem+Poster'}" alt="">
+      </div>
       <div class="stub">
         <div class="title">${item.title || item.name}</div>
-        <button class="primary" onclick="addToWatchlist(${item.id}, '${item.media_type}')">${watchlist[key] ? 'Na lista ✓' : '+ Adicionar'}</button>
+        <button class="primary" onclick="addToWatchlist(${item.id}, '${item.media_type}')">
+          ${watchlist[key] ? 'Na lista ✓' : '+ Adicionar'}
+        </button>
       </div>
     `;
     resultsEl.appendChild(card);
