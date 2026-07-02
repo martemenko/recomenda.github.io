@@ -12,13 +12,12 @@
     --surface: #0f033b;
     --surface-2: #222836;
     --amber: #f3c255;
-    --amber-dim: #f3c255;
     --teal: #dd0df4;
-    --teal-dim: #dd0df4;
     --text: #edeef0;
     --muted: #8b92a0;
     --danger: #db1391;
     --radius: 4px;
+    --heart: #ff4b5c;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -36,328 +35,98 @@
     padding: 28px 20px 22px;
     margin-bottom: 28px;
     border-bottom: 3px solid var(--amber);
-    background:
-      repeating-linear-gradient(90deg, var(--surface) 0 22px, #14181f 22px 24px);
+    background: repeating-linear-gradient(90deg, var(--surface) 0 22px, #14181f 22px 24px);
     display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
   }
   .marquee::before, .marquee::after{
-    content:"";
-    position:absolute; top:8px; bottom:8px; width:10px;
+    content:""; position:absolute; top:8px; bottom:8px; width:10px;
     background: radial-gradient(circle, var(--amber) 0 3px, transparent 4px) 0 0/10px 14px repeat-y;
     opacity:.9;
   }
-  .marquee::before{ left:0; }
-  .marquee::after{ right:0; }
-  .marquee h1{
-    font-family: 'Oswald', sans-serif;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    font-size: 28px;
-    margin: 0;
-    color: var(--amber);
-    text-shadow: 0 0 18px rgba(232,163,61,.35);
-  }
-  .marquee p{
-    margin: 4px 0 0;
-    color: var(--muted);
-    font-size: 13px;
-    letter-spacing: .5px;
-  }
-  .settings-btn{
-    background: transparent;
-    border: 1px solid var(--muted);
-    color: var(--muted);
-    border-radius: var(--radius);
-    padding: 8px 14px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    cursor: pointer;
-    letter-spacing: .5px;
-  }
-  .settings-btn:hover{ border-color: var(--amber); color: var(--amber); }
+  .marquee::before{ left:0; } .marquee::after{ right:0; }
+  .marquee h1{ font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; font-size: 28px; margin: 0; color: var(--amber); }
 
-  /* Search */
-  .search-row{ display:flex; gap:10px; margin-bottom: 22px; }
-  .search-row input{
-    flex:1;
-    background: var(--surface);
-    border: 1px solid var(--surface-2);
-    color: var(--text);
-    padding: 12px 14px;
-    border-radius: var(--radius);
-    font-size: 15px;
-    font-family: 'Inter', sans-serif;
-  }
-  .search-row input:focus{ outline: none; border-color: var(--amber); }
-  .search-row button{
-    background: var(--amber);
-    color: #1a1206;
-    border: none;
-    padding: 0 20px;
-    border-radius: var(--radius);
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .search-row button:hover{ background:#f0b558; }
-
-  /* Ticker stats */
-  .ticker{
-    display:flex; gap: 14px; margin-bottom: 30px; flex-wrap: wrap;
-  }
-  .ticker .cell{
-    background: var(--surface);
-    border-left: 3px solid var(--teal);
-    padding: 10px 16px;
-    border-radius: var(--radius);
-    min-width: 130px;
-  }
-  .ticker .cell .num{
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--teal);
-  }
-  .ticker .cell .lbl{
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: .5px;
-    text-transform: uppercase;
-  }
-
-  /* Tabs */
-  .tabs{ display:flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--surface-2); }
-  .tabs button{
-    background: transparent; border: none; color: var(--muted);
-    padding: 10px 16px; font-family:'Oswald', sans-serif; letter-spacing: 1px;
-    text-transform: uppercase; font-size: 13px; cursor: pointer;
-    border-bottom: 3px solid transparent;
-  }
-  .tabs button.active{ color: var(--amber); border-bottom-color: var(--amber); }
-
-  .section-label{
-    font-family:'IBM Plex Mono', monospace;
-    color: var(--muted); font-size: 12px; letter-spacing: 1px;
-    text-transform: uppercase; margin: 6px 0 12px;
-  }
-
-  /* Grid of cards (ticket-stub style) */
-  .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 16px; }
-
-  .card{
-    background: var(--surface);
-    border-radius: var(--radius);
-    overflow: hidden;
-    position: relative;
-    display:flex; flex-direction: column;
-    border: 1px solid var(--surface-2);
-  }
-  .card .poster-wrap{ position:relative; aspect-ratio: 2/3; background: var(--surface-2); }
-  .card .poster-wrap img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .card .badge{
-    position:absolute; top:8px; left:8px;
-    background: rgba(18,21,28,.85);
-    color: var(--amber);
-    font-family:'IBM Plex Mono', monospace;
-    font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
-    padding: 3px 7px; border-radius: 3px;
-  }
-  .card .stub{
-    padding: 10px 12px 12px;
-    border-top: 2px dashed var(--surface-2);
-    display:flex; flex-direction:column; gap: 8px; flex:1;
-  }
-  .card .title{ font-size: 14px; font-weight: 600; line-height: 1.3; }
-  .card .year{ font-size: 12px; color: var(--muted); font-family:'IBM Plex Mono', monospace; }
-  .card .actions{ display:flex; gap:6px; margin-top: auto; flex-wrap: wrap; }
-  .card select{
-    flex:1;
-    background: var(--surface-2);
-    color: var(--text);
-    border: 1px solid #2c3342;
-    border-radius: 3px;
-    padding: 6px 6px;
-    font-size: 11px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .card .remove{
-    background: transparent; border: 1px solid var(--danger); color: var(--danger);
-    border-radius: 3px; padding: 6px 8px; font-size: 11px; cursor:pointer;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .card .remove:hover{ background: var(--danger); color: #1a0e0c; }
-
-  .status-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
-  .status-want{ background:#8b92a0; }
-  .status-watching{ background: var(--amber); }
-  .status-watched{ background: var(--teal); }
-
-  .progress-wrap{
-    height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden;
-  }
-  .progress-bar{ height:100%; background: var(--teal); }
-  .progress-label{ font-size:10px; color: var(--muted); font-family:'IBM Plex Mono', monospace; }
-
-  .episodes-toggle{
-    font-family:'IBM Plex Mono', monospace; font-size: 11px; color: var(--amber);
-    cursor: pointer; text-align:center; padding: 6px 0 0; letter-spacing:.5px;
-    border-top: 1px solid var(--surface-2); margin-top: 4px;
-  }
-  .episodes-toggle:hover{ color:#f0b558; }
-  .episodes-panel{
-    margin-top: 8px; display:flex; flex-direction:column; gap: 6px; max-height: 260px; overflow-y: auto;
-  }
-  .season-block{ border: 1px solid var(--surface-2); border-radius: 3px; }
-  .season-header{
-    display:flex; justify-content:space-between; align-items:center;
-    padding: 7px 9px; cursor:pointer; font-size: 12px; font-family:'IBM Plex Mono', monospace;
-    color: var(--text); background: var(--surface-2);
-  }
-  .season-header .season-progress{ color: var(--muted); font-size: 11px; }
-  .episode-list{ padding: 6px 9px; display:none; flex-direction:column; gap:5px; }
-  .episode-list.open{ display:flex; }
-  .episode-row{
-    display:flex; align-items:center; gap:8px; font-size: 12px; color: var(--text);
-  }
-  .episode-row input[type=checkbox]{ accent-color: var(--teal); width:14px; height:14px; }
-  .episode-row .ep-name{ color: var(--muted); flex:1; }
-  .episode-row .ep-num{ font-family:'IBM Plex Mono', monospace; color: var(--amber); width: 34px; flex-shrink:0; }
-  .ep-loading{ font-size: 11px; color: var(--muted); font-family:'IBM Plex Mono', monospace; padding: 4px 0; }
-
-  .empty{
-    color: var(--muted);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
-    padding: 40px 0;
-    text-align: center;
-    border: 1px dashed var(--surface-2);
-    border-radius: var(--radius);
-  }
-
-  /* Modal */
-  .overlay{
-    position: fixed; inset:0; background: rgba(0,0,0,.6);
-    display:flex; align-items:center; justify-content:center;
-    z-index: 50; padding: 20px;
-  }
-  .modal{
-    background: var(--surface);
-    border: 1px solid var(--surface-2);
-    border-radius: 6px;
-    padding: 26px;
-    max-width: 420px; width:100%;
-  }
-  .modal p{ color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
-  .modal a{ color: var(--teal); }
-  .modal input{
-    width:100%; background: var(--surface-2); border:1px solid #2c3342;
-    color: var(--text); padding: 10px 12px; border-radius: 4px; font-family:'IBM Plex Mono', monospace;
-    font-size: 13px; margin-bottom: 14px;
-  }
-  .modal .row{ display:flex; gap:10px; justify-content:flex-end; }
-  button.primary{
-    background: var(--amber); color:#1a1206; border:none; padding: 9px 16px;
-    border-radius: 4px; font-family:'Oswald', sans-serif; font-weight:600; letter-spacing: .5px;
-    cursor:pointer; text-transform: uppercase; font-size: 12px;
-  }
-  button.ghost{
-    background: transparent; border:1px solid var(--muted); color: var(--muted);
-    padding: 9px 16px; border-radius:4px; cursor:pointer; font-size: 12px;
-  }
-  .loading, .error{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted); margin-bottom: 14px; }
-  .error{ color: var(--danger); }
-
-  /* Layout: full-width main content + dropdown menu */
-  .page{ max-width: 1100px; margin: 0 auto; padding: 0 20px 60px; }
-  .menu-wrap{ position: relative; flex-shrink: 0; }
+  /* Menu */
+  .menu-wrap{ position: relative; }
   .menu-toggle{
     background: transparent; border: 1px solid var(--muted); color: var(--muted);
     border-radius: var(--radius); padding: 8px 12px; font-size: 16px; cursor: pointer;
-    line-height: 1;
   }
-  .menu-toggle:hover, .menu-toggle.active{ border-color: var(--amber); color: var(--amber); }
   .dropdown-menu{
-    position: absolute; top: calc(100% + 8px); right: 0;
-    background: var(--surface); border: 1px solid var(--surface-2); border-radius: 6px;
-    padding: 8px; display: none; flex-direction: column; gap: 4px; min-width: 200px;
-    z-index: 40; box-shadow: 0 10px 26px rgba(0,0,0,.45);
+    position: absolute; top: 100%; right: 0; background: var(--surface-2);
+    border: 1px solid var(--muted); border-radius: 4px; display: none; flex-direction: column; z-index: 100;
   }
   .dropdown-menu.open{ display: flex; }
   .dropdown-menu button{
-    text-align: left; background: transparent; border: 1px solid transparent;
-    color: var(--muted); padding: 10px 12px; border-radius: 4px; cursor: pointer;
-    font-family: 'Oswald', sans-serif; letter-spacing: .5px; text-transform: uppercase;
-    font-size: 12px;
+    background: none; border: none; color: white; padding: 10px 20px; text-align: left; cursor: pointer; font-family: 'Oswald';
   }
-  .dropdown-menu button.active{ color: var(--amber); background: var(--surface-2); }
-  .dropdown-menu button:hover{ color: var(--amber); }
+  .dropdown-menu button:hover{ background: var(--bg); color: var(--amber); }
 
-  .panel{
-    background: var(--surface); border: 1px solid var(--surface-2); border-radius: 6px;
-    padding: 26px; max-width: 480px;
-  }
-  .panel.wide{ max-width: 100%; }
-  .panel h2{
-    font-family:'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 1px;
-    color: var(--amber); font-size: 18px; margin: 0 0 10px;
-  }
-  .panel p{ color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
-  .panel a{ color: var(--teal); }
-  .panel input[type=text]{
-    width:100%; background: var(--surface-2); border:1px solid #2c3342;
-    color: var(--text); padding: 10px 12px; border-radius: 4px; font-family:'IBM Plex Mono', monospace;
-    font-size: 13px; margin-bottom: 14px;
-  }
-  .panel input[type=file]{
-    color: var(--muted); font-size: 13px; margin-bottom: 6px;
-  }
+  /* Search & Tabs */
+  .search-row{ display:flex; gap:10px; margin-bottom: 22px; }
+  .search-row input{ flex:1; background: var(--surface); border: 1px solid var(--surface-2); color: var(--text); padding: 12px; border-radius: var(--radius); }
+  .search-row button, button.primary{ background: var(--amber); color: #1a1206; border: none; padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-family: 'Oswald'; font-weight: 600; text-transform: uppercase; }
 
-  .mapping-grid{ display:flex; flex-direction:column; gap: 8px; margin-top: 6px; }
-  .mapping-row{ display:flex; align-items:center; gap: 10px; }
-  .mapping-col{
-    width: 170px; flex-shrink:0; font-family:'IBM Plex Mono', monospace; font-size: 12px;
-    color: var(--text); overflow:hidden; text-overflow: ellipsis; white-space:nowrap;
-  }
-  .mapping-row select{
-    flex:1; background: var(--surface-2); color: var(--text); border:1px solid #2c3342;
-    border-radius: 3px; padding: 7px; font-size: 12px; font-family:'IBM Plex Mono', monospace;
-  }
+  .tabs{ display:flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--surface-2); }
+  .tabs button{ background: transparent; border: none; color: var(--muted); padding: 10px 16px; font-family:'Oswald'; cursor: pointer; border-bottom: 3px solid transparent; }
+  .tabs button.active{ color: var(--amber); border-bottom-color: var(--amber); }
 
-  @media (max-width: 760px){
-    .dropdown-menu{ min-width: 170px; }
+  /* Grid & Cards */
+  .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 16px; }
+  .card{ background: var(--surface); border-radius: var(--radius); overflow: hidden; position: relative; display:flex; flex-direction: column; border: 1px solid var(--surface-2); }
+  .poster-wrap{ position:relative; aspect-ratio: 2/3; background: var(--surface-2); }
+  .poster-wrap img{ width:100%; height:100%; object-fit:cover; display:block; }
+  
+  .heart-btn{
+    position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6);
+    border: none; color: white; border-radius: 50%; width: 30px; height: 30px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px;
   }
+  .heart-btn.active{ color: var(--heart); }
+
+  .card .stub{ padding: 10px; border-top: 2px dashed var(--surface-2); flex:1; display:flex; flex-direction:column; }
+  .card .title{ font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .card .list-tag{ font-size: 10px; background: var(--surface-2); padding: 2px 5px; border-radius: 3px; margin-top: 4px; display: inline-block; }
+
+  /* Profile Stats */
+  .profile-section{ margin-bottom: 40px; }
+  .profile-section h2{ font-family: 'Oswald'; color: var(--amber); text-transform: uppercase; border-bottom: 1px solid var(--surface-2); padding-bottom: 10px; }
+  .stats-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+  .stat-card{ background: var(--surface-2); padding: 20px; border-radius: var(--radius); border-left: 4px solid var(--teal); }
+  .stat-card .val{ font-size: 20px; font-weight: bold; color: var(--teal); font-family: 'IBM Plex Mono'; }
+  .stat-card .lbl{ font-size: 12px; color: var(--muted); text-transform: uppercase; }
+
+  .custom-list-input{ width: 100%; background: var(--bg); border: 1px solid var(--surface-2); color: white; font-size: 11px; padding: 4px; margin-top: 5px; }
+
+  .empty{ color: var(--muted); font-family: 'IBM Plex Mono'; padding: 20px; text-align: center; border: 1px dashed var(--surface-2); }
+  [style*="display: none"] { display: none !important; }
 </style>
 </head>
 <body>
-  <div class="page">
+  <div class="app">
     <div class="marquee">
       <div>
         <h1>★ Recomenda Cine</h1>
-        <p>seu catálogo pessoal de séries e filmes assistidos</p>
+        <p>seu catálogo pessoal de séries e filmes</p>
       </div>
       <div class="menu-wrap">
-        <button class="menu-toggle" id="menuToggle">☰</button>
-        <div class="dropdown-menu" id="dropdownMenu">
-          <button data-view="home" class="active">🏠 Home</button>
-          <button data-view="apikey">🔑 Chave da API</button>
-          <button data-view="import">⇪ Importar dados</button>
+        <button class="menu-toggle" id="menuToggle">☰ Menu</button>
+        <div class="dropdown-menu" id="mainMenu">
+          <button onclick="showView('home')">Home</button>
+          <button onclick="showView('profile')">Perfil</button>
+          <button onclick="showView('import')">Importar Dados</button>
         </div>
       </div>
     </div>
 
+    <!-- VIEW: HOME -->
     <section id="view-home">
       <div class="search-row">
         <input id="searchInput" type="text" placeholder="Buscar série ou filme…" />
         <button id="searchBtn">Buscar</button>
       </div>
       <div id="searchStatus"></div>
-      <div class="grid" id="searchResults"></div>
-
-      <div class="ticker" id="ticker"></div>
+      <div class="grid" id="searchResults" style="margin-bottom: 40px;"></div>
 
       <div class="tabs" id="tabs">
         <button data-tab="all" class="active">Tudo</button>
@@ -365,584 +134,241 @@
         <button data-tab="watching">Vendo agora</button>
         <button data-tab="watched">Já vi</button>
       </div>
-      <div class="section-label" id="sectionLabel">Minha lista</div>
       <div class="grid" id="listGrid"></div>
-      <div class="empty" id="emptyMsg" style="display:none;">Sua lista está vazia. Busque algo acima e clique em "Adicionar".</div>
     </section>
 
-    <section id="view-apikey" class="panel" style="display:none;">
-      <h2>Chave da API do TMDB</h2>
-      <p>
-        Esse app usa a base de dados gratuita do
-        <a href="https://www.themoviedb.org/" target="_blank">TMDB</a> para buscar séries e filmes.
-        Crie uma conta gratuita, gere uma "API Key (v3 auth)" nas configurações da sua conta TMDB,
-        e cole aqui. A chave fica salva só no seu navegador, neste arquivo.
-      </p>
-      <input id="apiKeyInput" type="text" placeholder="Cole sua API key aqui" />
-      <button class="primary" id="saveApiKeyBtn">Salvar</button>
-      <div id="apiKeyStatus" style="margin-top:10px;"></div>
+    <!-- VIEW: PROFILE -->
+    <section id="view-profile" style="display:none;">
+      <div class="profile-section">
+        <h2>1) Estatísticas</h2>
+        <div class="stats-grid" id="statsGrid"></div>
+      </div>
+
+      <div class="profile-section">
+        <h2>2) Quero Ver</h2>
+        <div id="customListsArea"></div>
+        <div class="grid" id="profileWantGrid"></div>
+      </div>
+
+      <div class="profile-section">
+        <h2>3) Séries em andamento / vistas</h2>
+        <div class="grid" id="profileSeriesGrid"></div>
+      </div>
+
+      <div class="profile-section">
+        <h2>4) Filmes já vistos</h2>
+        <div class="grid" id="profileMoviesGrid"></div>
+      </div>
+
+      <div class="profile-section">
+        <h2>5) Séries Favoritas ❤️</h2>
+        <div class="grid" id="favSeriesGrid"></div>
+      </div>
+
+      <div class="profile-section">
+        <h2>6) Filmes Favoritos ❤️</h2>
+        <div class="grid" id="favMoviesGrid"></div>
+      </div>
     </section>
 
-    <section id="view-import" class="panel wide" style="display:none;">
-      <h2>Importar dados (CSV)</h2>
-      <p>
-        O TV Time não tem exportação oficial — use uma extensão como "TV Time Out" pra gerar um CSV com suas séries,
-        temporadas, episódios e status de assistido. Depois, selecione o arquivo abaixo e mapeie as colunas.
-      </p>
-      <input type="file" id="csvFile" accept=".csv" />
-      <div id="csvMapping"></div>
-      <div id="importLog" style="margin-top:14px;"></div>
+    <!-- VIEW: IMPORT -->
+    <section id="view-import" style="display:none;">
+       <div class="profile-section">
+          <h2>Importar Dados</h2>
+          <p>Selecione seu arquivo CSV para importar sua lista.</p>
+          <input type="file" id="csvFile" accept=".csv" />
+          <div id="csvMapping"></div>
+       </div>
     </section>
   </div>
 
-
 <script>
-let apiKey = null;
-let watchlist = {}; // key: `${media_type}-${id}` -> {id, media_type, title, poster_path, status, watched: {seasonNum: [epNums]}, totalEpisodes}
+/** 
+ * CONFIGURAÇÃO: Insira sua chave aqui. 
+ * Em um repo público, ela estará visível. Para esconder 100% no Github Pages 
+ * você precisaria de um servidor/proxy, o que não é possível só com HTML.
+ */
+const CONFIG_API_KEY = "SUA_CHAVE_AQUI_TMDB"; 
+
+let watchlist = JSON.parse(localStorage.getItem('watchlist') || '{}');
 let currentTab = 'all';
-const seasonCache = {}; // key -> [{season_number, episode_count, name}]
-const episodeCache = {}; // `${key}-${seasonNumber}` -> [{episode_number, name}]
 
-const els = {
-  searchInput: document.getElementById('searchInput'),
-  searchBtn: document.getElementById('searchBtn'),
-  searchResults: document.getElementById('searchResults'),
-  searchStatus: document.getElementById('searchStatus'),
-  ticker: document.getElementById('ticker'),
-  tabs: document.getElementById('tabs'),
-  listGrid: document.getElementById('listGrid'),
-  emptyMsg: document.getElementById('emptyMsg'),
-  apiKeyInput: document.getElementById('apiKeyInput'),
-  saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
-  apiKeyStatus: document.getElementById('apiKeyStatus'),
-  csvFile: document.getElementById('csvFile'),
-  csvMapping: document.getElementById('csvMapping'),
-  importLog: document.getElementById('importLog'),
-};
-
-function showView(name){
-  ['home','apikey','import'].forEach(v => {
-    document.getElementById(`view-${v}`).style.display = (v === name) ? 'block' : 'none';
-  });
-  document.querySelectorAll('.dropdown-menu button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+// --- NAVEGAÇÃO ---
+function showView(viewName) {
+  document.getElementById('view-home').style.display = viewName === 'home' ? 'block' : 'none';
+  document.getElementById('view-profile').style.display = viewName === 'profile' ? 'block' : 'none';
+  document.getElementById('view-import').style.display = viewName === 'import' ? 'block' : 'none';
+  document.getElementById('mainMenu').classList.remove('open');
+  if(viewName === 'profile') renderProfile();
+  if(viewName === 'home') renderList();
 }
 
-const dropdownMenu = document.getElementById('dropdownMenu');
-const menuToggleBtn = document.getElementById('menuToggle');
+document.getElementById('menuToggle').onclick = () => document.getElementById('mainMenu').classList.toggle('open');
 
-menuToggleBtn.onclick = (e) => {
-  e.stopPropagation();
-  dropdownMenu.classList.toggle('open');
-  menuToggleBtn.classList.toggle('active', dropdownMenu.classList.contains('open'));
-};
-
-document.querySelectorAll('.dropdown-menu button').forEach(b => {
-  b.onclick = () => {
-    showView(b.dataset.view);
-    dropdownMenu.classList.remove('open');
-    menuToggleBtn.classList.remove('active');
-  };
-});
-
-document.addEventListener('click', (e) => {
-  if(!dropdownMenu.contains(e.target) && e.target !== menuToggleBtn){
-    dropdownMenu.classList.remove('open');
-    menuToggleBtn.classList.remove('active');
-  }
-});
-
-els.saveApiKeyBtn.onclick = () => {
-  const val = els.apiKeyInput.value.trim();
-  if(!val){ return; }
-  apiKey = val;
-  try{
-    localStorage.setItem('tmdb-api-key', apiKey);
-    els.apiKeyStatus.innerHTML = '<div class="loading" style="color:var(--teal)">Chave salva ✓</div>';
-  }catch(e){
-    els.apiKeyStatus.innerHTML = '<div class="error">Não foi possível salvar a chave.</div>';
-  }
-};
-
-els.tabs.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-tab]');
-  if(!btn) return;
-  currentTab = btn.dataset.tab;
-  [...els.tabs.children].forEach(b => b.classList.toggle('active', b === btn));
-  renderList();
-});
-
-function loadState(){
-  try{
-    apiKey = localStorage.getItem('tmdb-api-key');
-  }catch(e){ apiKey = null; }
-
-  try{
-    const raw = localStorage.getItem('watchlist');
-    watchlist = raw ? JSON.parse(raw) : {};
-  }catch(e){ watchlist = {}; }
-
-  els.apiKeyInput.value = apiKey || '';
-  if(!apiKey){ showView('apikey'); }
-  renderTicker();
-  renderList();
+// --- LÓGICA DE DADOS ---
+async function fetchDetails(id, type) {
+  const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${CONFIG_API_KEY}&language=pt-BR`;
+  const res = await fetch(url);
+  return await res.json();
 }
 
-function saveWatchlist(){
-  try{
-    localStorage.setItem('watchlist', JSON.stringify(watchlist));
-  }catch(e){ console.error('Falha ao salvar lista', e); }
+function save() {
+  localStorage.setItem('watchlist', JSON.stringify(watchlist));
 }
 
-function posterUrl(path){
-  return path ? `https://image.tmdb.org/t/p/w300${path}` : null;
-}
-
-function mediaLabel(type){ return type === 'tv' ? 'Série' : 'Filme'; }
-
-async function doSearch(){
-  const q = els.searchInput.value.trim();
-  els.searchResults.innerHTML = '';
-  els.searchStatus.innerHTML = '';
+// --- BUSCA ---
+document.getElementById('searchBtn').onclick = async () => {
+  const q = document.getElementById('searchInput').value;
   if(!q) return;
-  if(!apiKey){
-    els.searchStatus.innerHTML = '<div class="error">Configure sua chave da API do TMDB primeiro.</div>';
-    showView('apikey');
-    return;
-  }
-  els.searchStatus.innerHTML = '<div class="loading">Buscando…</div>';
-  try{
-    const url = `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(apiKey)}&language=pt-BR&query=${encodeURIComponent(q)}`;
-    const res = await fetch(url);
-    if(!res.ok){
-      throw new Error(res.status === 401 ? 'Chave da API inválida.' : `Erro ${res.status}`);
-    }
-    const data = await res.json();
-    const results = (data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv');
-    els.searchStatus.innerHTML = '';
-    if(results.length === 0){
-      els.searchStatus.innerHTML = '<div class="loading">Nenhum resultado encontrado.</div>';
-      return;
-    }
-    results.slice(0, 12).forEach(item => renderSearchCard(item));
-  }catch(e){
-    let msg = e.message;
-    if(e instanceof TypeError && /fetch/i.test(e.message)){
-      msg = 'Não foi possível conectar à API do TMDB. Se você está vendo este app dentro do preview do Claude, baixe o arquivo .html e abra-o direto no seu navegador (fora do Claude) — o preview interno bloqueia chamadas de rede externas.';
-    }
-    els.searchStatus.innerHTML = `<div class="error">${msg}</div>`;
-  }
+  const url = `https://api.themoviedb.org/3/search/multi?api_key=${CONFIG_API_KEY}&language=pt-BR&query=${encodeURIComponent(q)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  
+  const resultsEl = document.getElementById('searchResults');
+  resultsEl.innerHTML = '';
+  data.results.filter(r => r.media_type !== 'person').forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="poster-wrap">
+        <img src="https://image.tmdb.org/t/p/w300${item.poster_path}" alt="">
+      </div>
+      <div class="stub">
+        <div class="title">${item.title || item.name}</div>
+        <button class="primary" onclick="addToWatchlist(${item.id}, '${item.media_type}')">Adicionar</button>
+      </div>
+    `;
+    resultsEl.appendChild(card);
+  });
+};
+
+async function addToWatchlist(id, type) {
+  const details = await fetchDetails(id, type);
+  const key = `${type}-${id}`;
+  watchlist[key] = {
+    id,
+    type,
+    title: details.title || details.name,
+    poster: details.poster_path,
+    status: 'want',
+    runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : 0) || 0,
+    totalEpisodes: details.number_of_episodes || 0,
+    watchedEpisodes: 0,
+    favorite: false,
+    customList: ''
+  };
+  save();
+  alert('Adicionado!');
+  renderList();
 }
 
-function renderSearchCard(item){
-  const title = item.title || item.name || 'Sem título';
-  const date = item.release_date || item.first_air_date || '';
-  const year = date ? date.slice(0,4) : '—';
-  const key = `${item.media_type}-${item.id}`;
-  const already = !!watchlist[key];
-
+// --- RENDERIZAÇÃO ---
+function renderCard(key, item, container) {
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
     <div class="poster-wrap">
-      ${posterUrl(item.poster_path) ? `<img src="${posterUrl(item.poster_path)}" alt="${title}">` : ''}
-      <div class="badge">${mediaLabel(item.media_type)}</div>
+      <img src="https://image.tmdb.org/t/p/w300${item.poster}" alt="">
+      <button class="heart-btn ${item.favorite ? 'active' : ''}" onclick="toggleFav('${key}')">❤</button>
     </div>
     <div class="stub">
-      <div class="title">${title}</div>
-      <div class="year">${year}</div>
-      <div class="actions">
-        <button class="settings-btn add-btn" style="flex:1;">${already ? 'Na lista ✓' : '+ Adicionar'}</button>
-      </div>
+      <div class="title">${item.title}</div>
+      <select onchange="updateStatus('${key}', this.value)">
+        <option value="want" ${item.status==='want'?'selected':''}>Quero ver</option>
+        <option value="watching" ${item.status==='watching'?'selected':''}>Vendo</option>
+        <option value="watched" ${item.status==='watched'?'selected':''}>Já vi</option>
+      </select>
+      <input type="text" class="custom-list-input" placeholder="Lista (ex: Terror)" value="${item.customList || ''}" onchange="updateList('${key}', this.value)">
+      <button style="margin-top:5px; font-size:9px;" onclick="remove('${key}')">Remover</button>
     </div>
   `;
-  card.querySelector('.add-btn').onclick = () => {
-    watchlist[key] = {
-      id: item.id,
-      media_type: item.media_type,
-      title,
-      poster_path: item.poster_path,
-      year,
-      status: 'want',
-    };
-    saveWatchlist();
-    renderTicker();
-    renderList();
-    card.querySelector('.add-btn').textContent = 'Na lista ✓';
-  };
-  els.searchResults.appendChild(card);
+  container.appendChild(card);
 }
 
-async function fetchSeasons(item, key){
-  if(seasonCache[key]) return seasonCache[key];
-  const url = `https://api.themoviedb.org/3/tv/${item.id}?api_key=${encodeURIComponent(apiKey)}&language=pt-BR`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(`Erro ${res.status} ao buscar temporadas`);
-  const data = await res.json();
-  const seasons = (data.seasons || []).filter(s => s.season_number !== 0 || (data.seasons.length === 1));
-  seasonCache[key] = seasons;
-  watchlist[key].totalEpisodes = data.number_of_episodes || seasons.reduce((a,s)=>a+(s.episode_count||0),0);
-  return seasons;
+function updateStatus(key, status) { watchlist[key].status = status; save(); renderList(); }
+function updateList(key, listName) { watchlist[key].customList = listName; save(); }
+function toggleFav(key) { watchlist[key].favorite = !watchlist[key].favorite; save(); renderList(); if(document.getElementById('view-profile').style.display === 'block') renderProfile(); }
+function remove(key) { delete watchlist[key]; save(); renderList(); renderProfile(); }
+
+function renderList() {
+  const grid = document.getElementById('listGrid');
+  grid.innerHTML = '';
+  Object.entries(watchlist).forEach(([key, item]) => {
+    if(currentTab === 'all' || item.status === currentTab) renderCard(key, item, grid);
+  });
 }
 
-async function fetchEpisodes(item, key, seasonNumber){
-  const cacheKey = `${key}-${seasonNumber}`;
-  if(episodeCache[cacheKey]) return episodeCache[cacheKey];
-  const url = `https://api.themoviedb.org/3/tv/${item.id}/season/${seasonNumber}?api_key=${encodeURIComponent(apiKey)}&language=pt-BR`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(`Erro ${res.status} ao buscar episódios`);
-  const data = await res.json();
-  episodeCache[cacheKey] = data.episodes || [];
-  return episodeCache[cacheKey];
+// --- PERFIL E ESTATÍSTICAS ---
+function formatTime(minutes) {
+  const years = Math.floor(minutes / (60 * 24 * 365));
+  minutes %= (60 * 24 * 365);
+  const months = Math.floor(minutes / (60 * 24 * 30));
+  minutes %= (60 * 24 * 30);
+  const days = Math.floor(minutes / (60 * 24));
+  minutes %= (60 * 24);
+  const hours = Math.floor(minutes / 60);
+
+  let res = [];
+  if (years > 0) res.push(`${years}a`);
+  if (months > 0) res.push(`${months}m`);
+  if (days > 0) res.push(`${days}d`);
+  if (hours > 0) res.push(`${hours}h`);
+  return res.join(' ') || '0h';
 }
 
-function watchedCountForSeason(item, seasonNumber){
-  const arr = (item.watched && item.watched[seasonNumber]) || [];
-  return arr.length;
-}
+function renderProfile() {
+  let tvMinutes = 0, movieMinutes = 0, epCount = 0, movieCount = 0;
+  
+  // Limpar Grids
+  const grids = ['profileWantGrid', 'profileSeriesGrid', 'profileMoviesGrid', 'favSeriesGrid', 'favMoviesGrid'];
+  grids.forEach(id => document.getElementById(id).innerHTML = '');
 
-function totalWatchedCount(item){
-  if(!item.watched) return 0;
-  return Object.values(item.watched).reduce((a, arr) => a + arr.length, 0);
-}
+  Object.entries(watchlist).forEach(([key, item]) => {
+    // Calculo Stats
+    if(item.type === 'tv') {
+      // Simplificação: se 'watched', conta todos eps. Se 'watching', conta metade (estimativa rápida)
+      let mult = item.status === 'watched' ? 1 : (item.status === 'watching' ? 0.5 : 0);
+      let watched = Math.floor(item.totalEpisodes * mult);
+      tvMinutes += (watched * item.runtime);
+      epCount += watched;
+      if(item.status !== 'want') renderCard(key, item, document.getElementById('profileSeriesGrid'));
+    } else {
+      if(item.status === 'watched') {
+        movieMinutes += item.runtime;
+        movieCount++;
+        renderCard(key, item, document.getElementById('profileMoviesGrid'));
+      }
+    }
 
-function updateStatusFromProgress(item){
-  const watchedTotal = totalWatchedCount(item);
-  if(item.totalEpisodes && watchedTotal >= item.totalEpisodes){
-    item.status = 'watched';
-  } else if(watchedTotal > 0){
-    item.status = 'watching';
-  }
-}
+    // Seção Quero Ver
+    if(item.status === 'want') renderCard(key, item, document.getElementById('profileWantGrid'));
+    
+    // Favoritos
+    if(item.favorite) {
+      const favId = item.type === 'tv' ? 'favSeriesGrid' : 'favMoviesGrid';
+      renderCard(key, item, document.getElementById(favId));
+    }
+  });
 
-async function toggleEpisodesPanel(key, item, panelEl, toggleEl){
-  const isOpen = panelEl.style.display !== 'none' && panelEl.dataset.loaded === 'true';
-  if(panelEl.dataset.loaded === 'true'){
-    const showing = panelEl.style.display !== 'none';
-    panelEl.style.display = showing ? 'none' : 'flex';
-    toggleEl.textContent = showing ? 'Episódios ▾' : 'Episódios ▴';
-    return;
-  }
-  toggleEl.textContent = 'Carregando…';
-  try{
-    const seasons = await fetchSeasons(item, key);
-    panelEl.innerHTML = '';
-    seasons.forEach(season => {
-      const block = document.createElement('div');
-      block.className = 'season-block';
-      const watchedN = watchedCountForSeason(item, season.season_number);
-      block.innerHTML = `
-        <div class="season-header">
-          <span>Temporada ${season.season_number}${season.name && !/temporada/i.test(season.name) ? ' — '+season.name : ''}</span>
-          <span class="season-progress">${watchedN}/${season.episode_count}</span>
-        </div>
-        <div class="episode-list" data-season="${season.season_number}"></div>
-      `;
-      const header = block.querySelector('.season-header');
-      const list = block.querySelector('.episode-list');
-      header.onclick = async () => {
-        const willOpen = !list.classList.contains('open');
-        if(willOpen && !list.dataset.loaded){
-          list.innerHTML = '<div class="ep-loading">Carregando episódios…</div>';
-          list.classList.add('open');
-          try{
-            const episodes = await fetchEpisodes(item, key, season.season_number);
-            list.innerHTML = '';
-            episodes.forEach(ep => {
-              const row = document.createElement('label');
-              row.className = 'episode-row';
-              const checked = (item.watched && item.watched[season.season_number] || []).includes(ep.episode_number);
-              row.innerHTML = `
-                <input type="checkbox" ${checked ? 'checked' : ''}>
-                <span class="ep-num">E${String(ep.episode_number).padStart(2,'0')}</span>
-                <span class="ep-name">${ep.name || ''}</span>
-              `;
-              row.querySelector('input').onchange = (e) => {
-                if(!item.watched) item.watched = {};
-                if(!item.watched[season.season_number]) item.watched[season.season_number] = [];
-                const arr = item.watched[season.season_number];
-                if(e.target.checked){
-                  if(!arr.includes(ep.episode_number)) arr.push(ep.episode_number);
-                } else {
-                  const idx = arr.indexOf(ep.episode_number);
-                  if(idx > -1) arr.splice(idx,1);
-                }
-                updateStatusFromProgress(item);
-                saveWatchlist();
-                renderTicker();
-                block.querySelector('.season-progress').textContent = `${watchedCountForSeason(item, season.season_number)}/${season.episode_count}`;
-                const dot = document.querySelector(`.card[data-key="${key}"] .status-dot`);
-                if(dot){ dot.className = `status-dot ${item.status==='watched'?'status-watched':item.status==='watching'?'status-watching':'status-want'}`; }
-                const bar = document.querySelector(`.card[data-key="${key}"] .progress-bar`);
-                if(bar && item.totalEpisodes){ bar.style.width = `${Math.min(100, (totalWatchedCount(item)/item.totalEpisodes)*100)}%`; }
-              };
-              list.appendChild(row);
-            });
-            list.dataset.loaded = 'true';
-          }catch(e){
-            list.innerHTML = `<div class="ep-loading" style="color:var(--danger)">${e.message}</div>`;
-          }
-        } else {
-          list.classList.toggle('open');
-        }
-      };
-      panelEl.appendChild(block);
-    });
-    panelEl.dataset.loaded = 'true';
-    panelEl.style.display = 'flex';
-    toggleEl.textContent = 'Episódios ▴';
-  }catch(e){
-    toggleEl.textContent = 'Episódios ▾';
-    panelEl.innerHTML = `<div class="ep-loading" style="color:var(--danger)">${e.message}</div>`;
-    panelEl.style.display = 'flex';
-    panelEl.dataset.loaded = 'true';
-  }
-}
-
-function renderTicker(){
-  const items = Object.values(watchlist);
-  const total = items.length;
-  const watched = items.filter(i => i.status === 'watched').length;
-  const watching = items.filter(i => i.status === 'watching').length;
-  const series = items.filter(i => i.media_type === 'tv').length;
-  els.ticker.innerHTML = `
-    <div class="cell"><div class="num">${total}</div><div class="lbl">Na lista</div></div>
-    <div class="cell"><div class="num">${watched}</div><div class="lbl">Já vi</div></div>
-    <div class="cell"><div class="num">${watching}</div><div class="lbl">Vendo agora</div></div>
-    <div class="cell"><div class="num">${series}</div><div class="lbl">Séries</div></div>
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card"><div class="val">${formatTime(tvMinutes)}</div><div class="lbl">Tempo vendo TV</div></div>
+    <div class="stat-card"><div class="val">${epCount}</div><div class="lbl">Episódios assistidos</div></div>
+    <div class="stat-card"><div class="val">${formatTime(movieMinutes)}</div><div class="lbl">Tempo vendo Filmes</div></div>
+    <div class="stat-card"><div class="val">${movieCount}</div><div class="lbl">Filmes assistidos</div></div>
   `;
 }
 
-function renderList(){
-  const items = Object.entries(watchlist);
-  const filtered = items.filter(([key, item]) => currentTab === 'all' ? true : item.status === currentTab);
-  els.listGrid.innerHTML = '';
-  els.emptyMsg.style.display = filtered.length === 0 ? 'block' : 'none';
-
-  filtered
-    .sort((a,b) => (b[1].addedAt || 0) - (a[1].addedAt || 0))
-    .forEach(([key, item]) => {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.dataset.key = key;
-      const dotClass = item.status === 'watched' ? 'status-watched' : item.status === 'watching' ? 'status-watching' : 'status-want';
-      const isTv = item.media_type === 'tv';
-      const progressPct = isTv && item.totalEpisodes ? Math.min(100, (totalWatchedCount(item)/item.totalEpisodes)*100) : 0;
-      card.innerHTML = `
-        <div class="poster-wrap">
-          ${posterUrl(item.poster_path) ? `<img src="${posterUrl(item.poster_path)}" alt="${item.title}">` : ''}
-          <div class="badge">${mediaLabel(item.media_type)}</div>
-        </div>
-        <div class="stub">
-          <div class="title"><span class="status-dot ${dotClass}"></span>${item.title}</div>
-          <div class="year">${item.year || ''}</div>
-          ${isTv ? `
-            <div class="progress-wrap"><div class="progress-bar" style="width:${progressPct}%"></div></div>
-            <div class="progress-label">${totalWatchedCount(item)}${item.totalEpisodes ? '/'+item.totalEpisodes : ''} episódios vistos</div>
-          ` : ''}
-          <div class="actions">
-            <select class="status-select">
-              <option value="want" ${item.status==='want'?'selected':''}>Quero ver</option>
-              <option value="watching" ${item.status==='watching'?'selected':''}>Vendo agora</option>
-              <option value="watched" ${item.status==='watched'?'selected':''}>Já vi</option>
-            </select>
-            <button class="remove">Remover</button>
-          </div>
-          ${isTv ? `<div class="episodes-toggle">Episódios ▾</div><div class="episodes-panel" style="display:none;"></div>` : ''}
-        </div>
-      `;
-      card.querySelector('.status-select').onchange = (e) => {
-        watchlist[key].status = e.target.value;
-        saveWatchlist();
-        renderTicker();
-        renderList();
-      };
-      card.querySelector('.remove').onclick = () => {
-        delete watchlist[key];
-        saveWatchlist();
-        renderTicker();
-        renderList();
-      };
-      if(isTv){
-        const toggleEl = card.querySelector('.episodes-toggle');
-        const panelEl = card.querySelector('.episodes-panel');
-        toggleEl.onclick = () => toggleEpisodesPanel(key, item, panelEl, toggleEl);
-      }
-      els.listGrid.appendChild(card);
-    });
-}
-
-els.searchBtn.onclick = doSearch;
-els.searchInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') doSearch(); });
-
-/* ---------- Importação de CSV ---------- */
-const FIELD_OPTIONS = [
-  { value: '', label: 'Ignorar' },
-  { value: 'title', label: 'Título' },
-  { value: 'type', label: 'Tipo (série/filme)' },
-  { value: 'season', label: 'Temporada' },
-  { value: 'episode', label: 'Episódio' },
-  { value: 'watched', label: 'Assistido' },
-  { value: 'date', label: 'Data assistida' },
-];
-
-function guessField(header){
-  const h = (header || '').toLowerCase();
-  if(/title|t[íi]tulo|^name$|show|series|s[ée]rie/.test(h)) return 'title';
-  if(/^type$|tipo/.test(h)) return 'type';
-  if(/season|temporada/.test(h)) return 'season';
-  if(/episode|epis[óo]dio/.test(h)) return 'episode';
-  if(/watched|assistid/.test(h)) return 'watched';
-  if(/date|data/.test(h)) return 'date';
-  return '';
-}
-
-function parseCSV(text){
-  const rows = [];
-  let row = [], field = '', inQuotes = false;
-  for(let i = 0; i < text.length; i++){
-    const c = text[i];
-    if(inQuotes){
-      if(c === '"'){
-        if(text[i+1] === '"'){ field += '"'; i++; }
-        else { inQuotes = false; }
-      } else field += c;
-    } else {
-      if(c === '"'){ inQuotes = true; }
-      else if(c === ','){ row.push(field); field = ''; }
-      else if(c === '\n' || c === '\r'){
-        if(c === '\r' && text[i+1] === '\n') i++;
-        row.push(field); field = '';
-        if(row.some(f => f !== '')) rows.push(row);
-        row = [];
-      } else field += c;
-    }
+// Inicialização
+document.getElementById('tabs').onclick = (e) => {
+  if(e.target.dataset.tab) {
+    currentTab = e.target.dataset.tab;
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderList();
   }
-  if(field.length || row.length){ row.push(field); if(row.some(f => f !== '')) rows.push(row); }
-  return rows;
-}
-
-let csvHeaders = [], csvRows = [];
-
-els.csvFile.onchange = (e) => {
-  const file = e.target.files[0];
-  els.importLog.innerHTML = '';
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const parsed = parseCSV(ev.target.result);
-    if(parsed.length < 2){
-      els.csvMapping.innerHTML = '<div class="error">CSV vazio ou não reconhecido.</div>';
-      return;
-    }
-    csvHeaders = parsed[0];
-    csvRows = parsed.slice(1);
-    renderMapping();
-  };
-  reader.readAsText(file, 'utf-8');
 };
 
-function renderMapping(){
-  let html = `<div class="loading">${csvRows.length} linhas encontradas. Confira o mapeamento das colunas:</div>`;
-  html += '<div class="mapping-grid">';
-  csvHeaders.forEach((h, idx) => {
-    const guess = guessField(h);
-    html += `<div class="mapping-row"><span class="mapping-col" title="${h}">${h || '(sem nome)'}</span><select data-idx="${idx}" class="map-select">`;
-    FIELD_OPTIONS.forEach(opt => {
-      html += `<option value="${opt.value}" ${opt.value === guess ? 'selected' : ''}>${opt.label}</option>`;
-    });
-    html += '</select></div>';
-  });
-  html += '</div><button class="primary" id="importBtn" style="margin-top:14px;">Importar</button>';
-  els.csvMapping.innerHTML = html;
-  document.getElementById('importBtn').onclick = runImport;
-}
-
-async function runImport(){
-  if(!apiKey){
-    els.importLog.innerHTML = '<div class="error">Configure a chave da API do TMDB primeiro.</div>';
-    showView('apikey');
-    return;
-  }
-  const mapping = {};
-  document.querySelectorAll('.map-select').forEach(sel => {
-    if(sel.value) mapping[sel.value] = parseInt(sel.dataset.idx, 10);
-  });
-  if(mapping.title === undefined){
-    els.importLog.innerHTML = '<div class="error">Selecione qual coluna é o Título antes de importar.</div>';
-    return;
-  }
-
-  const groups = new Map();
-  csvRows.forEach(r => {
-    const title = (r[mapping.title] || '').trim();
-    if(!title) return;
-    const typeVal = mapping.type !== undefined ? (r[mapping.type] || '').toLowerCase() : '';
-    const mediaType = /movie|filme/.test(typeVal) ? 'movie' : 'tv';
-    const gkey = `${mediaType}::${title.toLowerCase()}`;
-    if(!groups.has(gkey)) groups.set(gkey, { title, mediaType, rows: [] });
-    groups.get(gkey).rows.push(r);
-  });
-
-  const total = groups.size;
-  let done = 0, matched = 0;
-  const notFound = [];
-  els.importLog.innerHTML = `<div class="loading">Importando 0/${total} títulos…</div>`;
-
-  for(const group of groups.values()){
-    done++;
-    els.importLog.innerHTML = `<div class="loading">Importando ${done}/${total} títulos… (${group.title})</div>`;
-    try{
-      const searchType = group.mediaType;
-      const url = `https://api.themoviedb.org/3/search/${searchType}?api_key=${encodeURIComponent(apiKey)}&language=pt-BR&query=${encodeURIComponent(group.title)}`;
-      const res = await fetch(url);
-      if(!res.ok){ notFound.push(group.title); continue; }
-      const data = await res.json();
-      const best = (data.results || [])[0];
-      if(!best){ notFound.push(group.title); continue; }
-
-      const key = `${searchType}-${best.id}`;
-      const year = (best.release_date || best.first_air_date || '').slice(0,4);
-      if(!watchlist[key]){
-        watchlist[key] = {
-          id: best.id, media_type: searchType,
-          title: best.title || best.name || group.title,
-          poster_path: best.poster_path, year, status: 'want', addedAt: Date.now(),
-        };
-      }
-      const item = watchlist[key];
-
-      if(searchType === 'tv' && mapping.season !== undefined && mapping.episode !== undefined){
-        group.rows.forEach(r => {
-          const s = parseInt(r[mapping.season], 10);
-          const ep = parseInt(r[mapping.episode], 10);
-          if(!isNaN(s) && !isNaN(ep)){
-            if(!item.watched) item.watched = {};
-            if(!item.watched[s]) item.watched[s] = [];
-            if(!item.watched[s].includes(ep)) item.watched[s].push(ep);
-          }
-        });
-        try{ await fetchSeasons(item, key); }catch(_e){}
-        updateStatusFromProgress(item);
-      } else {
-        item.status = 'watched';
-      }
-      matched++;
-    }catch(err){
-      notFound.push(group.title);
-    }
-    await new Promise(r => setTimeout(r, 120));
-  }
-
-  saveWatchlist();
-  renderTicker();
-  renderList();
-  els.importLog.innerHTML = `
-    <div class="loading" style="color:var(--teal)">Importação concluída: ${matched}/${total} títulos encontrados e adicionados à lista.</div>
-    ${notFound.length ? `<div class="error">Não encontrados na TMDB (adicione manualmente pela busca na Home): ${notFound.join(', ')}</div>` : ''}
-  `;
-}
-
-loadState();
+renderList();
 </script>
 </body>
 </html>
