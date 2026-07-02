@@ -7,27 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  .logo-img {
-    height: 40px;
-    width: auto;
-    vertical-align: middle;
-    margin-right: 15px;
-    display: inline-block;
-  }
-
-  .marquee h1 {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    font-size: 28px;
-    margin: 0;
-    color: var(--amber);
-    
-    display: flex;
-    align-items: center;
-  }
-
   :root{
     --bg: #0f033b;
     --surface: #0f033b;
@@ -51,7 +30,25 @@
     background: repeating-linear-gradient(90deg, var(--surface) 0 22px, #14181f 22px 24px);
     display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
   }
-  .marquee h1{ font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; font-size: 28px; margin: 0; color: var(--amber); }
+
+  /* ESTILO DA LOGO E TITULO */
+  .logo-img {
+    height: 40px;
+    width: auto;
+    margin-right: 15px;
+    display: inline-block;
+  }
+  .marquee h1{ 
+    font-family: 'Oswald', sans-serif; 
+    font-weight: 700; 
+    letter-spacing: 3px; 
+    text-transform: uppercase; 
+    font-size: 28px; 
+    margin: 0; 
+    color: var(--amber);
+    display: flex;
+    align-items: center;
+  }
 
   /* Menu */
   .menu-wrap{ position: relative; }
@@ -66,7 +63,7 @@
 
   /* Search & Tabs */
   .search-row{ display:flex; gap:10px; margin-bottom: 22px; }
-  .search-row input{ flex:1; background: var(--surface); border: 1px solid var(--surface-2); color: var(--text); padding: 12px; border-radius: var(--radius); }
+  .search-row input{ flex:1; background: var(--surface); border: 1px solid var(--surface-2); color: var(--text); padding: 12px; border-radius: var(--radius); font-family: 'Inter', sans-serif; }
   .search-row button, button.primary{ background: var(--amber); color: #1a1206; border: none; padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-family: 'Oswald'; font-weight: 600; text-transform: uppercase; }
 
   .tabs{ display:flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--surface-2); }
@@ -90,7 +87,7 @@
   .card .title{ font-size: 14px; font-weight: 600; line-height: 1.2; }
   .card .year{ font-size: 12px; color: var(--muted); font-family: 'IBM Plex Mono'; }
 
-  /* Episode Tracking Styles */
+  /* Episode Tracking */
   .episodes-toggle{ font-family:'IBM Plex Mono'; font-size: 11px; color: var(--amber); cursor: pointer; text-align:center; padding: 6px 0; border-top: 1px solid var(--surface-2); margin-top: 4px; }
   .episodes-panel{ margin-top: 8px; display:none; flex-direction:column; gap: 6px; max-height: 200px; overflow-y: auto; background: #161b22; padding: 5px; border-radius: 3px; }
   .season-block{ border: 1px solid var(--surface-2); border-radius: 3px; margin-bottom: 4px; }
@@ -98,26 +95,25 @@
   .episode-list{ padding: 5px; display:none; flex-direction:column; gap:4px; }
   .episode-list.open{ display:flex; }
   .episode-row{ display:flex; align-items:center; gap:8px; font-size: 11px; }
-  .episode-row input{ accent-color: var(--teal); }
 
   /* Profile Stats */
   .profile-section{ margin-bottom: 50px; }
   .profile-section h2{ font-family: 'Oswald'; color: var(--amber); text-transform: uppercase; border-bottom: 1px solid var(--surface-2); padding-bottom: 10px; margin-bottom: 20px; }
-  .stats-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+  .stats-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
   .stat-card{ background: var(--surface-2); padding: 20px; border-radius: var(--radius); border-left: 4px solid var(--teal); }
   .stat-card .val{ font-size: 20px; font-weight: bold; color: var(--teal); font-family: 'IBM Plex Mono'; }
   .stat-card .lbl{ font-size: 11px; color: var(--muted); text-transform: uppercase; margin-top: 5px; }
 
   .custom-list-input{ width: 100%; background: var(--bg); border: 1px solid var(--surface-2); color: white; font-size: 11px; padding: 6px; border-radius: 3px; }
-
   .empty{ color: var(--muted); font-family: 'IBM Plex Mono'; padding: 40px; text-align: center; border: 1px dashed var(--surface-2); grid-column: 1 / -1; }
 </style>
 </head>
 <body>
+  <div class="app">
     <div class="marquee">
       <div>
         <h1>
-          <img src="LOGO [SEM BG].png" alt="Logo" class="logo-img"> 
+          <img src="sua-logo.png" alt="Logo" class="logo-img"> 
           Recomenda Cine
         </h1>
         <p>seu catálogo pessoal de séries e filmes</p>
@@ -132,7 +128,6 @@
       </div>
     </div>
 
-    <!-- VIEW: HOME -->
     <section id="view-home">
       <div class="search-row">
         <input id="searchInput" type="text" placeholder="Buscar série ou filme…" />
@@ -151,40 +146,33 @@
       <div id="homeEmpty" class="empty" style="display:none;">Sua lista está vazia.</div>
     </section>
 
-    <!-- VIEW: PROFILE -->
     <section id="view-profile" style="display:none;">
       <div class="profile-section">
         <h2>1) Estatísticas</h2>
         <div class="stats-grid" id="statsGrid"></div>
       </div>
-
       <div class="profile-section">
         <h2>2) Quero Ver (Listas)</h2>
         <div class="grid" id="profileWantGrid"></div>
       </div>
-
       <div class="profile-section">
         <h2>3) Séries (Vendo / Vistas)</h2>
         <div class="grid" id="profileSeriesGrid"></div>
       </div>
-
       <div class="profile-section">
         <h2>4) Filmes já vistos</h2>
         <div class="grid" id="profileMoviesGrid"></div>
       </div>
-
       <div class="profile-section">
         <h2>5) Séries Favoritas ❤️</h2>
         <div class="grid" id="favSeriesGrid"></div>
       </div>
-
       <div class="profile-section">
         <h2>6) Filmes Favoritos ❤️</h2>
         <div class="grid" id="favMoviesGrid"></div>
       </div>
     </section>
 
-    <!-- VIEW: IMPORT -->
     <section id="view-import" style="display:none;">
        <div class="profile-section">
           <h2>Importar Dados (CSV)</h2>
@@ -195,49 +183,45 @@
   </div>
 
 <script>
-// --- CONFIGURAÇÃO ---
-const CONFIG_API_KEY = "460f4aa9be26a5c51685542c2ee0984d"; // COLOQUE SUA CHAVE AQUI
+// --- IMPORTANTE: COLOQUE SUA CHAVE AQUI ---
+const CONFIG_API_KEY = "460f4aa9be26a5c51685542c2ee0984d"; 
 
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '{}');
-const seasonCache = {};
-const episodeCache = {};
 
-// --- NAVEGAÇÃO ---
-function showView(viewName) {
-  ['home', 'profile', 'import'].forEach(v => document.getElementById(`view-${v}`).style.display = v === viewName ? 'block' : 'none');
-  document.getElementById('mainMenu').classList.remove('open');
-  if(viewName === 'profile') renderProfile();
-  if(viewName === 'home') renderList();
-}
-
-document.getElementById('menuToggle').onclick = (e) => {
-  e.stopPropagation();
-  document.getElementById('mainMenu').classList.toggle('open');
-};
-document.addEventListener('click', () => document.getElementById('mainMenu').classList.remove('open'));
-
-// --- DADOS ---
 function save() { localStorage.setItem('watchlist', JSON.stringify(watchlist)); }
 
 async function fetchTMDB(endpoint) {
   const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${CONFIG_API_KEY}&language=pt-BR`);
+  if(!res.ok) return { results: [] };
   return res.json();
 }
 
 // --- BUSCA ---
-document.getElementById('searchBtn').onclick = async () => {
-  const q = document.getElementById('searchInput').value;
+const searchBtn = document.getElementById('searchBtn');
+const searchInput = document.getElementById('searchInput');
+
+async function doSearch() {
+  const q = searchInput.value.trim();
   if(!q) return;
+  
+  document.getElementById('searchStatus').innerHTML = 'Buscando...';
   const data = await fetchTMDB(`search/multi?query=${encodeURIComponent(q)}`);
+  document.getElementById('searchStatus').innerHTML = '';
+  
   const resultsEl = document.getElementById('searchResults');
   resultsEl.innerHTML = '';
   
+  if(!data.results || data.results.length === 0) {
+    document.getElementById('searchStatus').innerHTML = 'Nenhum resultado.';
+    return;
+  }
+
   data.results.filter(r => r.media_type === 'tv' || r.media_type === 'movie').forEach(item => {
     const key = `${item.media_type}-${item.id}`;
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <div class="poster-wrap"><img src="https://image.tmdb.org/t/p/w300${item.poster_path}" alt=""></div>
+      <div class="poster-wrap"><img src="https://image.tmdb.org/t/p/w300${item.poster_path || ''}" alt=""></div>
       <div class="stub">
         <div class="title">${item.title || item.name}</div>
         <button class="primary" onclick="addToWatchlist(${item.id}, '${item.media_type}')">${watchlist[key] ? 'Na lista ✓' : '+ Adicionar'}</button>
@@ -245,7 +229,10 @@ document.getElementById('searchBtn').onclick = async () => {
     `;
     resultsEl.appendChild(card);
   });
-};
+}
+
+searchBtn.onclick = doSearch;
+searchInput.onkeydown = (e) => { if(e.key === 'Enter') doSearch(); };
 
 async function addToWatchlist(id, type) {
   const details = await fetchTMDB(`${type}/${id}`);
@@ -257,15 +244,19 @@ async function addToWatchlist(id, type) {
     status: 'want',
     runtime: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : 0) || 0,
     totalEpisodes: details.number_of_episodes || 0,
-    watched: {}, // {seasonNum: [epNums]}
+    watched: {}, 
     favorite: false,
     customList: ''
   };
   save();
-  showView('home');
+  document.getElementById('searchResults').innerHTML = '';
+  searchInput.value = '';
+  renderList();
 }
 
-// --- RENDERIZADOR DE CARDS (REINTEGRADO COM EPISÓDIOS) ---
+// --- RENDERIZAÇÃO ---
+let currentTab = 'all';
+
 function renderCard(key, item, container) {
   const card = document.createElement('div');
   card.className = 'card';
@@ -293,87 +284,16 @@ function renderCard(key, item, container) {
   container.appendChild(card);
 }
 
-// --- CONTROLE DE EPISÓDIOS ---
-async function toggleEpisodesPanel(key) {
-  const item = watchlist[key];
-  const card = document.querySelector(`.card[data-key="${key}"]`);
-  const panel = card.querySelector('.episodes-panel');
-  
-  if(panel.style.display === 'flex') {
-    panel.style.display = 'none';
-    return;
-  }
-  
-  panel.style.display = 'flex';
-  if(panel.innerHTML !== '') return; // Já carregado
-
-  panel.innerHTML = '<div style="font-size:10px; color:var(--muted)">Carregando temporadas...</div>';
-  const data = await fetchTMDB(`tv/${item.id}`);
-  const seasons = data.seasons.filter(s => s.season_number > 0);
-  
-  panel.innerHTML = '';
-  seasons.forEach(s => {
-    const sBlock = document.createElement('div');
-    sBlock.className = 'season-block';
-    sBlock.innerHTML = `
-      <div class="season-header" onclick="toggleEpList(this)">
-        <span>Temp. ${s.season_number}</span>
-        <span class="count">${(item.watched[s.season_number] || []).length}/${s.episode_count}</span>
-      </div>
-      <div class="episode-list" data-s="${s.season_number}"></div>
-    `;
-    panel.appendChild(sBlock);
-  });
+// --- FUNÇÕES GERAIS ---
+function showView(viewName) {
+  ['home', 'profile', 'import'].forEach(v => document.getElementById(`view-${v}`).style.display = v === viewName ? 'block' : 'none');
+  document.getElementById('mainMenu').classList.remove('open');
+  if(viewName === 'profile') renderProfile();
+  if(viewName === 'home') renderList();
 }
 
-async function toggleEpList(header) {
-  const list = header.nextElementSibling;
-  const sNum = list.dataset.s;
-  const key = header.closest('.card').dataset.key;
-  const item = watchlist[key];
-
-  list.classList.toggle('open');
-  if(list.innerHTML !== '') return;
-
-  list.innerHTML = '<div style="font-size:10px;">Buscando eps...</div>';
-  const data = await fetchTMDB(`tv/${item.id}/season/${sNum}`);
-  
-  list.innerHTML = '';
-  data.episodes.forEach(ep => {
-    const row = document.createElement('label');
-    row.className = 'episode-row';
-    const isWatched = (item.watched[sNum] || []).includes(ep.episode_number);
-    row.innerHTML = `
-      <input type="checkbox" ${isWatched ? 'checked' : ''} onchange="toggleEp('${key}', ${sNum}, ${ep.episode_number}, this)">
-      <span>E${ep.episode_number} - ${ep.name}</span>
-    `;
-    list.appendChild(row);
-  });
-}
-
-function toggleEp(key, sNum, epNum, checkbox) {
-  const item = watchlist[key];
-  if(!item.watched[sNum]) item.watched[sNum] = [];
-  
-  if(checkbox.checked) {
-    item.watched[sNum].push(epNum);
-  } else {
-    item.watched[sNum] = item.watched[sNum].filter(n => n !== epNum);
-  }
-  
-  // Atualiza contador da temporada no UI
-  const header = checkbox.closest('.season-block').querySelector('.count');
-  const total = header.innerText.split('/')[1];
-  header.innerText = `${item.watched[sNum].length}/${total}`;
-
-  save();
-}
-
-// --- FUNÇÕES DE INTERFACE ---
-function updateStatus(key, val) { watchlist[key].status = val; save(); renderList(); }
-function updateCustomList(key, val) { watchlist[key].customList = val; save(); }
-function toggleFav(key, e) { e.stopPropagation(); watchlist[key].favorite = !watchlist[key].favorite; save(); renderList(); }
-function remove(key) { if(confirm('Remover?')) { delete watchlist[key]; save(); renderList(); if(document.getElementById('view-profile').style.display === 'block') renderProfile(); } }
+document.getElementById('menuToggle').onclick = (e) => { e.stopPropagation(); document.getElementById('mainMenu').classList.toggle('open'); };
+document.addEventListener('click', () => document.getElementById('mainMenu').classList.remove('open'));
 
 function renderList() {
   const grid = document.getElementById('listGrid');
@@ -383,7 +303,58 @@ function renderList() {
   items.forEach(([key, item]) => renderCard(key, item, grid));
 }
 
-// --- ESTATÍSTICAS E PERFIL ---
+function updateStatus(key, val) { watchlist[key].status = val; save(); renderList(); }
+function updateCustomList(key, val) { watchlist[key].customList = val; save(); }
+function toggleFav(key, e) { e.stopPropagation(); watchlist[key].favorite = !watchlist[key].favorite; save(); renderList(); if(document.getElementById('view-profile').style.display === 'block') renderProfile(); }
+function remove(key) { if(confirm('Remover?')) { delete watchlist[key]; save(); renderList(); if(document.getElementById('view-profile').style.display === 'block') renderProfile(); } }
+
+async function toggleEpisodesPanel(key) {
+  const item = watchlist[key];
+  const card = document.querySelector(`.card[data-key="${key}"]`);
+  const panel = card.querySelector('.episodes-panel');
+  if(panel.style.display === 'flex') { panel.style.display = 'none'; return; }
+  panel.style.display = 'flex';
+  if(panel.innerHTML !== '') return;
+  panel.innerHTML = '<div style="font-size:10px;">Carregando...</div>';
+  const data = await fetchTMDB(`tv/${item.id}`);
+  panel.innerHTML = '';
+  data.seasons.filter(s => s.season_number > 0).forEach(s => {
+    const sBlock = document.createElement('div');
+    sBlock.className = 'season-block';
+    sBlock.innerHTML = `<div class="season-header" onclick="toggleEpList(this)"><span>Temp. ${s.season_number}</span><span class="count">${(item.watched[s.season_number] || []).length}/${s.episode_count}</span></div><div class="episode-list" data-s="${s.season_number}"></div>`;
+    panel.appendChild(sBlock);
+  });
+}
+
+async function toggleEpList(header) {
+  const list = header.nextElementSibling;
+  const sNum = list.dataset.s;
+  const key = header.closest('.card').dataset.key;
+  const item = watchlist[key];
+  list.classList.toggle('open');
+  if(list.innerHTML !== '') return;
+  const data = await fetchTMDB(`tv/${item.id}/season/${sNum}`);
+  list.innerHTML = '';
+  data.episodes.forEach(ep => {
+    const row = document.createElement('label');
+    row.className = 'episode-row';
+    const isWatched = (item.watched[sNum] || []).includes(ep.episode_number);
+    row.innerHTML = `<input type="checkbox" ${isWatched ? 'checked' : ''} onchange="toggleEp('${key}', ${sNum}, ${ep.episode_number}, this)"><span>E${ep.episode_number} - ${ep.name}</span>`;
+    list.appendChild(row);
+  });
+}
+
+function toggleEp(key, sNum, epNum, checkbox) {
+  const item = watchlist[key];
+  if(!item.watched[sNum]) item.watched[sNum] = [];
+  if(checkbox.checked) item.watched[sNum].push(epNum);
+  else item.watched[sNum] = item.watched[sNum].filter(n => n !== epNum);
+  const header = checkbox.closest('.season-block').querySelector('.count');
+  const total = header.innerText.split('/')[1];
+  header.innerText = `${item.watched[sNum].length}/${total}`;
+  save();
+}
+
 function formatTime(totalMinutes) {
   const years = Math.floor(totalMinutes / (60 * 24 * 365));
   totalMinutes %= (60 * 24 * 365);
@@ -392,7 +363,6 @@ function formatTime(totalMinutes) {
   const days = Math.floor(totalMinutes / (60 * 24));
   totalMinutes %= (60 * 24);
   const hours = Math.floor(totalMinutes / 60);
-
   let parts = [];
   if (years > 0) parts.push(`${years}a`);
   if (months > 0) parts.push(`${months}m`);
@@ -403,41 +373,22 @@ function formatTime(totalMinutes) {
 
 function renderProfile() {
   let tvMinutes = 0, movieMinutes = 0, epCount = 0, movieCount = 0;
-  
-  const ids = ['profileWantGrid', 'profileSeriesGrid', 'profileMoviesGrid', 'favSeriesGrid', 'favMoviesGrid'];
-  ids.forEach(id => document.getElementById(id).innerHTML = '');
-
+  ['profileWantGrid', 'profileSeriesGrid', 'profileMoviesGrid', 'favSeriesGrid', 'favMoviesGrid'].forEach(id => document.getElementById(id).innerHTML = '');
   Object.entries(watchlist).forEach(([key, item]) => {
-    // Cálculo de tempo
     if(item.type === 'tv') {
       const watchedInSeries = Object.values(item.watched).reduce((acc, curr) => acc + curr.length, 0);
       tvMinutes += (watchedInSeries * item.runtime);
       epCount += watchedInSeries;
       if(item.status !== 'want') renderCard(key, item, document.getElementById('profileSeriesGrid'));
     } else {
-      if(item.status === 'watched') {
-        movieMinutes += item.runtime;
-        movieCount++;
-        renderCard(key, item, document.getElementById('profileMoviesGrid'));
-      }
+      if(item.status === 'watched') { movieMinutes += item.runtime; movieCount++; renderCard(key, item, document.getElementById('profileMoviesGrid')); }
     }
-
     if(item.status === 'want') renderCard(key, item, document.getElementById('profileWantGrid'));
-    if(item.favorite) {
-      const target = item.type === 'tv' ? 'favSeriesGrid' : 'favMoviesGrid';
-      renderCard(key, item, document.getElementById(target));
-    }
+    if(item.favorite) { const target = item.type === 'tv' ? 'favSeriesGrid' : 'favMoviesGrid'; renderCard(key, item, document.getElementById(target)); }
   });
-
-  document.getElementById('statsGrid').innerHTML = `
-    <div class="stat-card"><div class="val">${formatTime(tvMinutes)}</div><div class="lbl">Tempo vendo TV</div></div>
-    <div class="stat-card"><div class="val">${epCount}</div><div class="lbl">Episódios assistidos</div></div>
-    <div class="stat-card"><div class="val">${formatTime(movieMinutes)}</div><div class="lbl">Tempo vendo Filmes</div></div>
-    <div class="stat-card"><div class="val">${movieCount}</div><div class="lbl">Filmes assistidos</div></div>
-  `;
+  document.getElementById('statsGrid').innerHTML = `<div class="stat-card"><div class="val">${formatTime(tvMinutes)}</div><div class="lbl">Tempo TV</div></div><div class="stat-card"><div class="val">${epCount}</div><div class="lbl">Episódios</div></div><div class="stat-card"><div class="val">${formatTime(movieMinutes)}</div><div class="lbl">Tempo Filmes</div></div><div class="stat-card"><div class="val">${movieCount}</div><div class="lbl">Filmes</div></div>`;
 }
 
-// --- TABS ---
 document.getElementById('tabs').onclick = (e) => {
   if(e.target.dataset.tab) {
     currentTab = e.target.dataset.tab;
@@ -446,7 +397,6 @@ document.getElementById('tabs').onclick = (e) => {
   }
 };
 
-// Iniciar
 renderList();
 </script>
 </body>
