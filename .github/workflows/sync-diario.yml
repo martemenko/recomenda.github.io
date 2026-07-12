@@ -1,0 +1,26 @@
+name: Sync diário TMDB
+ 
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC = 03:00 no horário de Brasília
+  workflow_dispatch: {}    # permite rodar manualmente pela aba Actions
+ 
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+ 
+      - name: Instalar dependências
+        run: pip install requests supabase
+ 
+      - name: Rodar sync diário
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/sync_diario.py
