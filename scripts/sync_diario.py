@@ -71,6 +71,7 @@ def atualizar_serie(tmdb_id):
             "id": ep["id"],
             "titulo_id": detalhes["id"],
             "episode_name": ep.get("name"),
+            "sinopse": ep.get("overview"),
             "duration": ep.get("runtime"),
             "launch_date": ep.get("air_date"),
             "season_number": ep.get("season_number"),
