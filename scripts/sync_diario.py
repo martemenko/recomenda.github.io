@@ -73,6 +73,8 @@ def atualizar_serie(tmdb_id):
             "episode_name": ep.get("name"),
             "duration": ep.get("runtime"),
             "launch_date": ep.get("air_date"),
+            "season_number": ep.get("season_number"),
+            "episode_number": ep.get("episode_number"),
         } for ep in season_data.get("episodes", [])]
         if episodios:
             supabase.table("episode").upsert(episodios).execute()
