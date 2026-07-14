@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Heart, ChevronLeft, Star } from 'lucide-react'
+import { Heart, ChevronLeft, Star, Check } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import SectionLabel from '../components/SectionLabel'
@@ -101,6 +101,36 @@ export default function TituloDetalhe() {
   async function marcarEpisodio(episodeId, marcado) {
     if (marcado) await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
     else await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+
+    // Recalcula quantos episódios estão marcados agora e deriva o status automaticamente:
+    // nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
+    const { data: assistidosAgora } = await supabase
+      .from('watched_episode')
+      .select('episode_id')
+      .eq('user_id', user.id)
+      .in('episode_id', episodios.map((e) => e.id))
+
+    const totalAssistidos = assistidosAgora?.length ?? 0
+    const novoStatus = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= episodios.length ? 'visto' : 'vendo'
+
+    await supabase.from('user_item').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      status: novoStatus,
+      favorito: userItem?.favorito ?? false,
+    })
+
+    carregar()
+  }
+
+  async function marcarFilmeVisto() {
+    const novoStatus = userItem?.status === 'visto' ? 'quero_ver' : 'visto'
+    await supabase.from('user_item').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      status: novoStatus,
+      favorito: userItem?.favorito ?? false,
+    })
     carregar()
   }
 
@@ -116,7 +146,7 @@ export default function TituloDetalhe() {
           <ChevronLeft size={18} />
         </button>
         <button onClick={favoritar} className="absolute top-3 right-3 bg-bg/70 rounded-full p-2">
-          <Heart size={18} fill={userItem?.favorito ? '#e8a33d' : 'none'} className={userItem?.favorito ? 'text-amber' : 'text-ink'} />
+          <Heart size={18} fill={userItem?.favorito ? '#ff4b5c' : 'none'} className={userItem?.favorito ? 'text-heart' : 'text-ink'} />
         </button>
       </div>
 
@@ -132,26 +162,34 @@ export default function TituloDetalhe() {
         </div>
         <p className="text-sm text-ink mt-3 leading-relaxed">{titulo.sinopse}</p>
 
-        {!userItem ? (
-          <button onClick={() => adicionar()} className="w-full bg-amber text-black rounded py-2.5 mt-4 font-display uppercase text-sm">
-            + Adicionar à lista
-          </button>
-        ) : (
-          <select
-            value={userItem.status}
-            onChange={(e) => adicionar(e.target.value)}
-            className="w-full bg-surface border border-surface2 rounded py-2.5 mt-4 text-sm text-ink"
-          >
-            <option value="quero_ver">Quero ver</option>
-            <option value="vendo">Vendo agora</option>
-            <option value="visto">Já vi</option>
-          </select>
-        )}
+        <div className="flex items-center gap-2 mt-4">
+          {!userItem ? (
+            <button onClick={() => adicionar()} className="flex-1 bg-amber text-black rounded py-2.5 font-display uppercase text-sm">
+              + Adicionar à lista
+            </button>
+          ) : (
+            <div className="flex-1 bg-surface border border-surface2 rounded py-2.5 text-center text-sm text-ink font-mono uppercase">
+              {{ quero_ver: 'Quero ver', vendo: 'Vendo agora', visto: 'Já vi' }[userItem.status]}
+            </div>
+          )}
+
+          {mediaType === 'movie' && (
+            <button
+              onClick={marcarFilmeVisto}
+              aria-label="Marcar como visto"
+              className={`flex-shrink-0 w-11 h-11 rounded-full border flex items-center justify-center ${
+                userItem?.status === 'visto' ? 'bg-teal border-teal text-black' : 'border-muted text-muted'
+              }`}
+            >
+              <Check size={20} />
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-1 justify-center mt-4">
           {[1,2,3,4,5,6,7,8,9,10].map((n) => (
             <button key={n} onClick={() => avaliar(n)}>
-              <Star size={16} fill={n <= minhaNota ? '#e8a33d' : 'none'} className={n <= minhaNota ? 'text-amber' : 'text-muted'} />
+              <Star size={16} fill={n <= minhaNota ? '#f3c255' : 'none'} className={n <= minhaNota ? 'text-amber' : 'text-muted'} />
             </button>
           ))}
         </div>

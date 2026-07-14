@@ -35,8 +35,7 @@ export default function Explorar() {
     setCarregando(false)
   }
 
-  async function adicionar(item) {
-    await callFunction('adicionar-titulo', { tmdb_id: item.tmdb_id, media_type: item.media_type })
+  async function abrirResultado(item) {
     navigate(`/titulo/${item.tmdb_id}?tipo=${item.media_type}`)
   }
 
@@ -71,7 +70,7 @@ export default function Explorar() {
                   imagem={r.imagem}
                   nome={r.nome}
                   badge={r.media_type === 'tv' ? 'Série' : 'Filme'}
-                  onClick={() => adicionar(r)}
+                  onClick={() => abrirResultado(r)}
                 />
               ))}
             </div>

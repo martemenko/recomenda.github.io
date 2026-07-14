@@ -4,16 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#12151c',
-        surface: '#1b2028',
+        bg: '#0f033b',
+        surface: '#0f033b',
         surface2: '#222836',
-        amber: '#e8a33d',
-        amberdim: '#8a6428',
-        teal: '#4fa89b',
-        tealdim: '#2f6058',
+        amber: '#f3c255',
+        teal: '#dd0df4',
         ink: '#edeef0',
         muted: '#8b92a0',
-        danger: '#c96257',
+        danger: '#db1391',
+        heart: '#ff4b5c',
       },
       fontFamily: {
         display: ['Oswald', 'sans-serif'],

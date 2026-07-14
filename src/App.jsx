@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import MobileShell from './components/MobileShell'
 import BottomTabBar from './components/BottomTabBar'
@@ -55,10 +55,10 @@ function RodapeCondicional() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AuthProvider>
         <RotasPrivadas />
       </AuthProvider>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
