@@ -99,26 +99,30 @@ export default function TituloDetalhe() {
   }
 
   async function marcarEpisodio(episodeId, marcado) {
-    if (marcado) await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
-    else await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+    const { error: erroToggle } = marcado
+      ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
+      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+    if (erroToggle) console.error('Erro ao marcar episódio:', erroToggle)
 
     // Recalcula quantos episódios estão marcados agora e deriva o status automaticamente:
     // nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
-    const { data: assistidosAgora } = await supabase
+    const { data: assistidosAgora, error: erroAssistidos } = await supabase
       .from('watched_episode')
       .select('episode_id')
       .eq('user_id', user.id)
       .in('episode_id', episodios.map((e) => e.id))
+    if (erroAssistidos) console.error('Erro ao recontar assistidos:', erroAssistidos)
 
     const totalAssistidos = assistidosAgora?.length ?? 0
     const novoStatus = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= episodios.length ? 'visto' : 'vendo'
 
-    await supabase.from('user_item').upsert({
+    const { error: erroStatus } = await supabase.from('user_item').upsert({
       user_id: user.id,
       titulo_id: Number(id),
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
+    if (erroStatus) console.error('Erro ao atualizar status do user_item:', erroStatus)
 
     carregar()
   }

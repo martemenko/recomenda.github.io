@@ -38,12 +38,23 @@ export default function FilmesPage() {
 
   async function carregarMeusFilmes() {
     setCarregando(true)
-    const { data } = await supabase
+    // user_item não tem FK direta pra "movies" - mesma correção do SeriesPage
+    const { data: itensBrutos, error: erroItens } = await supabase
       .from('user_item')
-      .select('titulo_id, titulo(nome, imagem), movies!inner(titulo_id)')
+      .select('titulo_id, titulo(nome, imagem)')
       .eq('user_id', user.id)
       .eq('status', 'quero_ver')
-    setMeusFilmes(data ?? [])
+    if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
+
+    const ids = (itensBrutos ?? []).map((i) => i.titulo_id)
+    const { data: moviesEncontrados, error: erroMovies } = await supabase
+      .from('movies')
+      .select('titulo_id')
+      .in('titulo_id', ids.length ? ids : [0])
+    if (erroMovies) console.error('Erro ao buscar movies:', erroMovies)
+
+    const idsDeFilme = new Set((moviesEncontrados ?? []).map((m) => m.titulo_id))
+    setMeusFilmes((itensBrutos ?? []).filter((i) => idsDeFilme.has(i.titulo_id)))
     setCarregando(false)
   }
 

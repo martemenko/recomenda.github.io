@@ -27,12 +27,25 @@ export default function SeriesPage() {
   async function carregar() {
     setCarregando(true)
 
-    // Séries que o usuário está vendo ou já viu (série!inner filtra só tv, não filme)
-    const { data: itens } = await supabase
+    // Séries que o usuário está vendo ou já viu.
+    // user_item não tem FK direta pra "series", então não dá pra usar !inner aqui -
+    // busca os itens normalmente e cruza com os ids de série em duas consultas.
+    const { data: itensBrutos, error: erroItens } = await supabase
       .from('user_item')
-      .select('titulo_id, status, added_at, titulo(nome, imagem), series!inner(temporadas)')
+      .select('titulo_id, status, added_at, titulo(nome, imagem)')
       .eq('user_id', user.id)
       .in('status', ['vendo', 'visto'])
+    if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
+
+    const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
+    const { data: seriesEncontradas, error: erroSeries } = await supabase
+      .from('series')
+      .select('titulo_id')
+      .in('titulo_id', idsCandidatos.length ? idsCandidatos : [0])
+    if (erroSeries) console.error('Erro ao buscar series:', erroSeries)
+
+    const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
+    const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
 
     const tituloIds = (itens ?? []).map((i) => i.titulo_id)
     if (tituloIds.length === 0) {
@@ -42,17 +55,19 @@ export default function SeriesPage() {
       return
     }
 
-    const { data: episodios } = await supabase
+    const { data: episodios, error: erroEpisodios } = await supabase
       .from('episode')
       .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
       .in('titulo_id', tituloIds)
       .order('season_number', { ascending: true })
       .order('episode_number', { ascending: true })
+    if (erroEpisodios) console.error('Erro ao buscar episode:', erroEpisodios)
 
-    const { data: assistidos } = await supabase
+    const { data: assistidos, error: erroAssistidos } = await supabase
       .from('watched_episode')
       .select('episode_id, watched_at')
       .eq('user_id', user.id)
+    if (erroAssistidos) console.error('Erro ao buscar watched_episode:', erroAssistidos)
 
     const watchedMap = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
     const hoje = new Date()

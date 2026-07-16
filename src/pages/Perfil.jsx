@@ -21,19 +21,30 @@ export default function Perfil() {
 
   async function carregar() {
     // Tempo vendo TV + episódios assistidos
-    const { data: eps } = await supabase
+    const { data: eps, error: erroEps } = await supabase
       .from('watched_episode')
       .select('episode(duration)')
       .eq('user_id', user.id)
+    if (erroEps) console.error('Erro ao buscar watched_episode:', erroEps)
     const minutosTv = (eps ?? []).reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
 
     // Filmes assistidos + tempo vendo filme
-    const { data: filmes } = await supabase
+    // user_item não tem FK direta pra "movies" - mesma correção das outras páginas
+    const { data: itensVistos, error: erroItensVistos } = await supabase
       .from('user_item')
-      .select('titulo_id, movies!inner(duration)')
+      .select('titulo_id')
       .eq('user_id', user.id)
       .eq('status', 'visto')
-    const minutosFilme = (filmes ?? []).reduce((soma, f) => soma + (f.movies?.duration ?? 0), 0)
+    if (erroItensVistos) console.error('Erro ao buscar user_item (visto):', erroItensVistos)
+
+    const idsVistos = (itensVistos ?? []).map((i) => i.titulo_id)
+    const { data: filmes, error: erroFilmes } = await supabase
+      .from('movies')
+      .select('titulo_id, duration')
+      .in('titulo_id', idsVistos.length ? idsVistos : [0])
+    if (erroFilmes) console.error('Erro ao buscar movies:', erroFilmes)
+
+    const minutosFilme = (filmes ?? []).reduce((soma, f) => soma + (f.duration ?? 0), 0)
 
     setStats({
       tempoTv: formatarDuracao(minutosTv).texto,
@@ -48,12 +59,13 @@ export default function Perfil() {
       .eq('user_id', user.id)
     setListas(listasData ?? [])
 
-    const { data: hist } = await supabase
+    const { data: hist, error: erroHist } = await supabase
       .from('watched_episode')
       .select('episode(titulo(id, nome, imagem))')
       .eq('user_id', user.id)
       .order('watched_at', { ascending: false })
       .limit(12)
+    if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
     setHistorico(hist ?? [])
   }
 
