@@ -57,9 +57,10 @@ export default function Configuracoes() {
       const guess = {}
       headers.forEach((h, i) => {
         const l = h.toLowerCase()
-        if (l.includes('titulo') || l.includes('título') || l.includes('name')) guess.titulo = i
+        if (l.includes('titulo') || l.includes('título') || l.includes('title') || l.includes('name')) guess.titulo = i
         if (l.includes('temporada') || l.includes('season')) guess.temporada = i
         if (l.includes('episodio') || l.includes('episódio') || l.includes('episode')) guess.episodio = i
+        if ((l.includes('watched') || l.includes('assistid')) && !l.includes('_at') && !l.includes('date') && !l.includes('quando')) guess.assistido = i
       })
       setMapeamento(guess)
     }
@@ -85,7 +86,9 @@ export default function Configuracoes() {
         const melhor = results?.[0]
         if (!melhor) { naoEncontrados.push(titulo); continue }
 
-        await callFunction('adicionar-titulo', { tmdb_id: melhor.tmdb_id, media_type: melhor.media_type, status: 'visto' })
+        // Adiciona sem forçar status - o status real é calculado depois, com base no que
+        // de fato foi marcado como assistido (senão tudo vira "já vi" na hora, errado).
+        await callFunction('adicionar-titulo', { tmdb_id: melhor.tmdb_id, media_type: melhor.media_type })
 
         if (melhor.media_type === 'tv' && mapeamento.temporada !== undefined && mapeamento.episodio !== undefined) {
           const { data: episodios } = await supabase
@@ -97,8 +100,33 @@ export default function Configuracoes() {
             const s = parseInt(linha[mapeamento.temporada], 10)
             const ep = parseInt(linha[mapeamento.episodio], 10)
             const match = episodios?.find((e) => e.season_number === s && e.episode_number === ep)
-            if (match) await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
+            if (!match) continue
+
+            // Respeita a coluna is_watched: só marca se ela existir E disser 'true'/'1'/'sim'.
+            // Se a coluna não foi mapeada, assume que toda linha do CSV é um episódio assistido.
+            const valorAssistido = mapeamento.assistido !== undefined ? linha[mapeamento.assistido]?.trim().toLowerCase() : null
+            const assistido = valorAssistido === null || ['true', '1', 'sim', 'yes'].includes(valorAssistido)
+
+            if (assistido) await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
+            else await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', match.id)
           }
+
+          // Deriva o status real: nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
+          const { data: assistidosFinal } = await supabase
+            .from('watched_episode')
+            .select('episode_id')
+            .eq('user_id', user.id)
+            .in('episode_id', (episodios ?? []).map((e) => e.id))
+
+          const total = episodios?.length ?? 0
+          const totalAssistidos = assistidosFinal?.length ?? 0
+          const status = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= total ? 'visto' : 'vendo'
+          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
+        } else {
+          // Filme: se a linha tiver coluna de assistido e disser 'false', mantém quero_ver; senão marca visto.
+          const valorAssistido = mapeamento.assistido !== undefined ? linhas[0][mapeamento.assistido]?.trim().toLowerCase() : null
+          const status = valorAssistido === null || ['true', '1', 'sim', 'yes'].includes(valorAssistido) ? 'visto' : 'quero_ver'
+          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
         }
         importados++
       } catch {
@@ -141,7 +169,7 @@ export default function Configuracoes() {
 
           {csvHeaders.length > 0 && (
             <div className="flex flex-col gap-2 bg-surface border border-surface2 rounded p-3">
-              {['titulo', 'temporada', 'episodio'].map((campo) => (
+              {['titulo', 'temporada', 'episodio', 'assistido'].map((campo) => (
                 <div key={campo} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted uppercase font-mono">{campo}</span>
                   <select
