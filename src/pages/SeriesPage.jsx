@@ -125,11 +125,10 @@ export default function SeriesPage() {
   }
 
   async function marcarAssistido(episodeId, jaMarcado) {
-    if (jaMarcado) {
-      await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
-    } else {
-      await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
-    }
+    const { error } = jaMarcado
+      ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
+      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+    if (error) console.error('Erro ao marcar episódio assistido:', error)
     carregar()
   }
 
