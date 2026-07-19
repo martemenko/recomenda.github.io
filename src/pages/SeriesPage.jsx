@@ -99,29 +99,50 @@ export default function SeriesPage() {
       else seguir.push(linha)
     }
 
-    // Em breve: episódios futuros das séries que o usuário assiste ou já assistiu
-    const { data: futuros } = await supabase
+    // Em breve: episódios futuros das séries que o usuário assiste ou já assistiu.
+    // episode.titulo_id referencia series.titulo_id, não titulo.id direto - não dá pra
+    // embutir "titulo(...)" num select de episode. Junta manualmente usando o mapa de
+    // título que já temos de "itens".
+    const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
+    const { data: futurosBrutos, error: erroFuturos } = await supabase
       .from('episode')
-      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date, titulo(nome, imagem)')
+      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
       .in('titulo_id', tituloIds)
       .gt('launch_date', hoje.toISOString().slice(0, 10))
       .order('launch_date', { ascending: true })
+    if (erroFuturos) console.error('Erro ao buscar em breve:', erroFuturos)
+
+    const futuros = (futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) }))
 
     setAssistirASeguir(seguir)
     setSemAssistirHaTempo(semTempo)
-    setEmBreve(futuros ?? [])
+    setEmBreve(futuros)
     await carregarHistorico()
     setCarregando(false)
   }
 
   async function carregarHistorico() {
-    const { data } = await supabase
+    // Mesmo motivo do "em breve": episode não tem FK direta pra titulo, então busca
+    // episode sozinho e cruza com titulo numa segunda consulta.
+    const { data: histBruto, error: erroHist } = await supabase
       .from('watched_episode')
-      .select('watched_at, episode(id, season_number, episode_number, episode_name, titulo_id, titulo(nome, imagem))')
+      .select('watched_at, episode(id, season_number, episode_number, episode_name, titulo_id)')
       .eq('user_id', user.id)
       .order('watched_at', { ascending: false })
       .limit(30)
-    setHistorico(data ?? [])
+    if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
+
+    const idsHist = [...new Set((histBruto ?? []).map((h) => h.episode?.titulo_id).filter(Boolean))]
+    const { data: titulosHist } = idsHist.length
+      ? await supabase.from('titulo').select('id, nome, imagem').in('id', idsHist)
+      : { data: [] }
+    const mapaTitulos = new Map((titulosHist ?? []).map((t) => [t.id, t]))
+
+    const historicoCompleto = (histBruto ?? []).map((h) => ({
+      ...h,
+      episode: { ...h.episode, titulo: mapaTitulos.get(h.episode?.titulo_id) },
+    }))
+    setHistorico(historicoCompleto)
   }
 
   async function marcarAssistido(episodeId, jaMarcado) {

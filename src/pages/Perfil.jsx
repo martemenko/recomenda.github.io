@@ -59,14 +59,20 @@ export default function Perfil() {
       .eq('user_id', user.id)
     setListas(listasData ?? [])
 
-    const { data: hist, error: erroHist } = await supabase
+    const { data: histBruto, error: erroHist } = await supabase
       .from('watched_episode')
-      .select('episode(titulo(id, nome, imagem))')
+      .select('episode(titulo_id)')
       .eq('user_id', user.id)
       .order('watched_at', { ascending: false })
       .limit(12)
     if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
-    setHistorico(hist ?? [])
+
+    const idsHist = [...new Set((histBruto ?? []).map((h) => h.episode?.titulo_id).filter(Boolean))]
+    const { data: titulosHist } = idsHist.length
+      ? await supabase.from('titulo').select('id, nome, imagem').in('id', idsHist)
+      : { data: [] }
+    const mapaTitulos = new Map((titulosHist ?? []).map((t) => [t.id, t]))
+    setHistorico((histBruto ?? []).map((h) => ({ episode: { titulo: mapaTitulos.get(h.episode?.titulo_id) } })))
   }
 
   return (

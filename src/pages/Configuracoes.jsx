@@ -21,14 +21,21 @@ export default function Configuracoes() {
   }
 
   async function exportarHistorico() {
-    const { data: eps } = await supabase
+    const { data: epsBrutos, error } = await supabase
       .from('watched_episode')
-      .select('watched_at, episode(episode_name, season_number, episode_number, titulo(nome))')
+      .select('watched_at, episode(episode_name, season_number, episode_number, titulo_id)')
       .eq('user_id', user.id)
+    if (error) console.error('Erro ao exportar histórico:', error)
+
+    const idsExport = [...new Set((epsBrutos ?? []).map((e) => e.episode?.titulo_id).filter(Boolean))]
+    const { data: titulosExport } = idsExport.length
+      ? await supabase.from('titulo').select('id, nome').in('id', idsExport)
+      : { data: [] }
+    const mapaExport = new Map((titulosExport ?? []).map((t) => [t.id, t.nome]))
 
     const linhas = [['titulo', 'temporada', 'episodio', 'nome_episodio', 'assistido_em']]
-    for (const e of eps ?? []) {
-      linhas.push([e.episode.titulo.nome, e.episode.season_number, e.episode.episode_number, e.episode.episode_name, e.watched_at])
+    for (const e of epsBrutos ?? []) {
+      linhas.push([mapaExport.get(e.episode.titulo_id), e.episode.season_number, e.episode.episode_number, e.episode.episode_name, e.watched_at])
     }
     const csv = linhas.map((l) => l.map((v) => `"${v ?? ''}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
