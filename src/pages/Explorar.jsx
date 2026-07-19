@@ -44,7 +44,7 @@ export default function Explorar() {
       <TopBar title="Explorar" />
       <div className="flex-1 overflow-y-auto scroll-area">
         <form onSubmit={buscar} className="px-4 py-3">
-          <div className="flex items-center gap-2 bg-surface border border-surface2 rounded px-3 py-2">
+          <div className="flex items-center gap-2 bg-surface border border-white/10 rounded-2xl px-4 py-3">
             <Search size={16} className="text-muted" />
             <input
               value={query}

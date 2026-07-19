@@ -97,7 +97,7 @@ export default function Perfil() {
         <div className="flex gap-3 px-4 pb-2 overflow-x-auto scroll-area">
           {listas.map((l) => (
             <div key={l.id} className="flex-shrink-0 w-32">
-              <div className="text-xs text-ink font-display uppercase truncate mb-1">{l.nome}</div>
+              <div className="text-xs text-ink font-display font-medium truncate mb-1">{l.nome}</div>
               <div className="text-[10px] text-muted font-mono">{l.lista_item.length} títulos</div>
             </div>
           ))}
@@ -121,7 +121,7 @@ export default function Perfil() {
 
 function StatCard({ label, valor }) {
   return (
-    <div className="bg-surface border-l-2 border-teal rounded px-3 py-2.5">
+    <div className="bg-surface border border-white/5 rounded-2xl px-3.5 py-3 relative overflow-hidden">
       <div className="font-mono text-lg text-teal">{valor}</div>
       <div className="text-[10px] text-muted uppercase">{label}</div>
     </div>

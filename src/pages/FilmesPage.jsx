@@ -109,7 +109,7 @@ export default function FilmesPage() {
                   key={g.id ?? 'todos'}
                   onClick={() => setGeneroAtivo(g.id)}
                   className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-mono uppercase border ${
-                    generoAtivo === g.id ? 'bg-amber text-black border-amber' : 'text-muted border-surface2'
+                    generoAtivo === g.id ? 'bg-amber text-bg border-amber shadow-[0_0_12px_rgba(243,194,85,0.35)]' : 'text-muted border-white/10'
                   }`}
                 >
                   {g.nome}

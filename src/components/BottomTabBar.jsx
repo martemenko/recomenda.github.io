@@ -10,19 +10,32 @@ const abas = [
 
 export default function BottomTabBar() {
   return (
-    <nav className="sticky bottom-0 left-0 right-0 bg-surface border-t border-surface2 flex">
+    <nav className="sticky bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-white/5 flex px-2 pb-2 pt-1.5">
       {abas.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
           className={({ isActive }) =>
-            `flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-mono ${
+            `flex-1 flex flex-col items-center gap-1 py-2 rounded-2xl text-[11px] font-display font-medium ${
               isActive ? 'text-amber' : 'text-muted'
             }`
           }
         >
-          <Icon size={20} strokeWidth={2} />
-          {label}
+          {({ isActive }) => (
+            <>
+              <Icon
+                size={20}
+                strokeWidth={2.2}
+                className={isActive ? 'drop-shadow-[0_0_6px_rgba(243,194,85,0.6)]' : ''}
+              />
+              {label}
+              <span
+                className={`w-1 h-1 rounded-full transition-opacity ${
+                  isActive ? 'bg-amber opacity-100 shadow-[0_0_6px_#f3c255]' : 'opacity-0'
+                }`}
+              />
+            </>
+          )}
         </NavLink>
       ))}
     </nav>

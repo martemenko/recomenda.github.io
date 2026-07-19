@@ -29,7 +29,7 @@ export default function Login() {
 
   return (
     <div className="flex-1 flex flex-col justify-center px-6">
-      <h1 className="font-display uppercase tracking-wide text-amber text-2xl text-center mb-1">
+      <h1 className="font-display font-semibold text-amber text-2xl text-center mb-1">
         ★ Recomenda Cine
       </h1>
       <p className="text-muted text-sm text-center mb-8">seu catálogo pessoal de séries e filmes</p>
@@ -41,7 +41,7 @@ export default function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="bg-surface border border-surface2 rounded px-3 py-2.5 text-sm text-ink placeholder:text-muted"
+          className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
         />
         <input
           type="password"
@@ -50,13 +50,13 @@ export default function Login() {
           onChange={(e) => setSenha(e.target.value)}
           required
           minLength={6}
-          className="bg-surface border border-surface2 rounded px-3 py-2.5 text-sm text-ink placeholder:text-muted"
+          className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
         />
         {erro && <div className="text-danger text-xs font-mono">{erro}</div>}
         <button
           type="submit"
           disabled={carregando}
-          className="bg-amber text-black font-display uppercase tracking-wide text-sm rounded py-2.5 mt-2 disabled:opacity-60"
+          className="bg-amber text-bg font-display font-semibold text-sm rounded-2xl py-3 mt-2 shadow-[0_0_18px_rgba(243,194,85,0.35)] disabled:opacity-60"
         >
           {carregando ? 'Aguarde…' : modo === 'login' ? 'Entrar' : 'Criar conta'}
         </button>

@@ -79,6 +79,7 @@ export default function Configuracoes() {
 
     let importados = 0
     const naoEncontrados = []
+    const semEpisodioMarcado = []
     for (const [titulo, linhas] of grupos) {
       setImportLog(`Importando "${titulo}"…`)
       try {
@@ -91,11 +92,22 @@ export default function Configuracoes() {
         await callFunction('adicionar-titulo', { tmdb_id: melhor.tmdb_id, media_type: melhor.media_type })
 
         if (melhor.media_type === 'tv' && mapeamento.temporada !== undefined && mapeamento.episodio !== undefined) {
-          const { data: episodios } = await supabase
+          const { data: episodios, error: erroEpisodios } = await supabase
             .from('episode')
             .select('id, season_number, episode_number')
             .eq('titulo_id', melhor.tmdb_id)
+          if (erroEpisodios) console.error(`Erro ao buscar episódios de "${titulo}":`, erroEpisodios)
 
+          const semNumero = (episodios ?? []).filter((e) => e.season_number === null || e.episode_number === null).length
+          if (semNumero > 0) {
+            console.warn(
+              `"${titulo}": ${semNumero} episódio(s) sem season_number/episode_number no banco. ` +
+              `Isso indica que a Edge Function "adicionar-titulo" no Supabase está com uma versão antiga ` +
+              `(sem esses campos) - precisa colar a versão mais recente no editor e fazer Deploy de novo.`
+            )
+          }
+
+          let marcados = 0
           for (const linha of linhas) {
             const s = parseInt(linha[mapeamento.temporada], 10)
             const ep = parseInt(linha[mapeamento.episodio], 10)
@@ -107,8 +119,17 @@ export default function Configuracoes() {
             const valorAssistido = mapeamento.assistido !== undefined ? linha[mapeamento.assistido]?.trim().toLowerCase() : null
             const assistido = valorAssistido === null || ['true', '1', 'sim', 'yes'].includes(valorAssistido)
 
-            if (assistido) await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
-            else await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', match.id)
+            if (assistido) {
+              const { error } = await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
+              if (error) console.error(`Erro ao marcar episódio de "${titulo}":`, error)
+              else marcados++
+            } else {
+              await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', match.id)
+            }
+          }
+          if (marcados === 0 && linhas.length > 0) {
+            console.warn(`"${titulo}": nenhum episódio bateu com season/episode do banco (0 de ${linhas.length} linhas).`)
+            semEpisodioMarcado.push(titulo)
           }
 
           // Deriva o status real: nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
@@ -117,6 +138,7 @@ export default function Configuracoes() {
             .select('episode_id')
             .eq('user_id', user.id)
             .in('episode_id', (episodios ?? []).map((e) => e.id))
+
 
           const total = episodios?.length ?? 0
           const totalAssistidos = assistidosFinal?.length ?? 0
@@ -133,7 +155,13 @@ export default function Configuracoes() {
         naoEncontrados.push(titulo)
       }
     }
-    setImportLog(`Importação concluída: ${importados}/${grupos.size} títulos.${naoEncontrados.length ? ' Não encontrados: ' + naoEncontrados.join(', ') : ''}`)
+    setImportLog(
+      `Importação concluída: ${importados}/${grupos.size} títulos.` +
+      (naoEncontrados.length ? ` Não encontrados: ${naoEncontrados.join(', ')}.` : '') +
+      (semEpisodioMarcado.length
+        ? ` ⚠ Sem nenhum episódio marcado (provável Edge Function "adicionar-titulo" desatualizada no Supabase): ${semEpisodioMarcado.join(', ')}.`
+        : '')
+    )
   }
 
   async function excluirConta() {
@@ -161,21 +189,21 @@ export default function Configuracoes() {
 
         <SectionLabel>Histórico</SectionLabel>
         <div className="px-4 flex flex-col gap-3">
-          <button onClick={exportarHistorico} className="bg-surface border border-surface2 rounded py-2.5 text-sm text-ink">
+          <button onClick={exportarHistorico} className="bg-surface border border-white/10 rounded-2xl py-3 text-sm text-ink">
             Exportar histórico (.csv)
           </button>
 
           <input type="file" accept=".csv" onChange={selecionarArquivo} className="text-xs text-muted" />
 
           {csvHeaders.length > 0 && (
-            <div className="flex flex-col gap-2 bg-surface border border-surface2 rounded p-3">
+            <div className="flex flex-col gap-2 bg-surface border border-white/10 rounded-2xl p-3.5">
               {['titulo', 'temporada', 'episodio', 'assistido'].map((campo) => (
                 <div key={campo} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted uppercase font-mono">{campo}</span>
                   <select
                     value={mapeamento[campo] ?? ''}
                     onChange={(e) => setMapeamento({ ...mapeamento, [campo]: e.target.value === '' ? undefined : Number(e.target.value) })}
-                    className="bg-surface2 text-xs text-ink rounded px-2 py-1"
+                    className="bg-surface2 text-xs text-ink rounded-full px-3 py-1.5"
                   >
                     <option value="">Ignorar</option>
                     {csvHeaders.map((h, i) => (
@@ -184,7 +212,7 @@ export default function Configuracoes() {
                   </select>
                 </div>
               ))}
-              <button onClick={importar} className="bg-amber text-black rounded py-2 text-sm font-display uppercase mt-1">
+              <button onClick={importar} className="bg-amber text-bg rounded-2xl py-2.5 text-sm font-display font-semibold mt-1 shadow-[0_0_14px_rgba(243,194,85,0.3)]">
                 Importar
               </button>
             </div>
@@ -200,13 +228,13 @@ export default function Configuracoes() {
           <input
             value={confirmacaoExclusao}
             onChange={(e) => setConfirmacaoExclusao(e.target.value)}
-            className="bg-surface border border-surface2 rounded px-3 py-2 text-sm text-ink"
+            className="bg-surface border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-ink"
             placeholder="EXCLUIR"
           />
           <button
             onClick={excluirConta}
             disabled={confirmacaoExclusao !== 'EXCLUIR'}
-            className="bg-danger text-black rounded py-2.5 text-sm font-display uppercase disabled:opacity-40"
+            className="bg-danger text-white rounded-2xl py-3 text-sm font-display font-semibold disabled:opacity-40"
           >
             Excluir minha conta
           </button>

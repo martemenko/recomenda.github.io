@@ -155,7 +155,7 @@ export default function TituloDetalhe() {
       </div>
 
       <div className="px-4 py-3">
-        <h1 className="font-display uppercase text-xl text-ink">{titulo.nome}</h1>
+        <h1 className="font-display font-semibold text-xl text-ink">{titulo.nome}</h1>
         <div className="flex items-center gap-2 mt-1 text-xs text-muted font-mono">
           <span>{titulo.genero}</span>
           {titulo.media_rating && (
@@ -168,11 +168,11 @@ export default function TituloDetalhe() {
 
         <div className="flex items-center gap-2 mt-4">
           {!userItem ? (
-            <button onClick={() => adicionar()} className="flex-1 bg-amber text-black rounded py-2.5 font-display uppercase text-sm">
+            <button onClick={() => adicionar()} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
               + Adicionar à lista
             </button>
           ) : (
-            <div className="flex-1 bg-surface border border-surface2 rounded py-2.5 text-center text-sm text-ink font-mono uppercase">
+            <div className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium">
               {{ quero_ver: 'Quero ver', vendo: 'Vendo agora', visto: 'Já vi' }[userItem.status]}
             </div>
           )}
@@ -181,8 +181,8 @@ export default function TituloDetalhe() {
             <button
               onClick={marcarFilmeVisto}
               aria-label="Marcar como visto"
-              className={`flex-shrink-0 w-11 h-11 rounded-full border flex items-center justify-center ${
-                userItem?.status === 'visto' ? 'bg-teal border-teal text-black' : 'border-muted text-muted'
+              className={`flex-shrink-0 w-12 h-12 rounded-2xl border flex items-center justify-center ${
+                userItem?.status === 'visto' ? 'bg-teal border-teal text-bg shadow-[0_0_14px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
               }`}
             >
               <Check size={20} />
@@ -217,7 +217,7 @@ export default function TituloDetalhe() {
           <SectionLabel>Episódios</SectionLabel>
           <div className="px-4 pb-8 flex flex-col gap-2">
             {temporadas.map((t) => (
-              <div key={t} className="border border-surface2 rounded">
+              <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
                 <button
                   onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
                   className="w-full flex justify-between px-3 py-2 text-sm text-ink font-mono"
