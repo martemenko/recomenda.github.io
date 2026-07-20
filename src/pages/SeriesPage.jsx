@@ -8,12 +8,19 @@ import SectionLabel from '../components/SectionLabel'
 import EpisodioRow from '../components/EpisodioRow'
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
+const DURACAO_ANIMACAO_MS = 260
 
 export default function SeriesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [aba, setAba] = useState('lista')
   const [carregando, setCarregando] = useState(true)
+  const [saindoIds, setSaindoIds] = useState(new Set())
+
+  // Dados brutos guardados em memória, pra recalcular localmente sem reconsultar o banco
+  const [itensCache, setItensCache] = useState([])
+  const [episodiosCache, setEpisodiosCache] = useState([])
+  const [assistidosMapa, setAssistidosMapa] = useState(new Map())
 
   const [assistirASeguir, setAssistirASeguir] = useState([])
   const [semAssistirHaTempo, setSemAssistirHaTempo] = useState([])
@@ -27,9 +34,6 @@ export default function SeriesPage() {
   async function carregar() {
     setCarregando(true)
 
-    // Séries que o usuário está vendo ou já viu.
-    // user_item não tem FK direta pra "series", então não dá pra usar !inner aqui -
-    // busca os itens normalmente e cruza com os ids de série em duas consultas.
     const { data: itensBrutos, error: erroItens } = await supabase
       .from('user_item')
       .select('titulo_id, status, added_at, titulo(nome, imagem)')
@@ -46,9 +50,11 @@ export default function SeriesPage() {
 
     const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
     const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
+    setItensCache(itens)
 
-    const tituloIds = (itens ?? []).map((i) => i.titulo_id)
+    const tituloIds = itens.map((i) => i.titulo_id)
     if (tituloIds.length === 0) {
+      setEpisodiosCache([]); setAssistidosSet(new Set())
       setAssistirASeguir([]); setSemAssistirHaTempo([]); setEmBreve([])
       await carregarHistorico()
       setCarregando(false)
@@ -62,6 +68,7 @@ export default function SeriesPage() {
       .order('season_number', { ascending: true })
       .order('episode_number', { ascending: true })
     if (erroEpisodios) console.error('Erro ao buscar episode:', erroEpisodios)
+    setEpisodiosCache(episodios ?? [])
 
     const { data: assistidos, error: erroAssistidos } = await supabase
       .from('watched_episode')
@@ -69,21 +76,38 @@ export default function SeriesPage() {
       .eq('user_id', user.id)
     if (erroAssistidos) console.error('Erro ao buscar watched_episode:', erroAssistidos)
 
-    const watchedMap = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
-    const hoje = new Date()
+    const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
+    setAssistidosMapa(novoAssistidosMapa)
 
+    recalcularBuckets(itens, episodios ?? [], novoAssistidosMapa)
+
+    const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
+    const hoje = new Date()
+    const { data: futurosBrutos, error: erroFuturos } = await supabase
+      .from('episode')
+      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+      .in('titulo_id', tituloIds)
+      .gt('launch_date', hoje.toISOString().slice(0, 10))
+      .order('launch_date', { ascending: true })
+    if (erroFuturos) console.error('Erro ao buscar em breve:', erroFuturos)
+    setEmBreve((futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) })))
+
+    await carregarHistorico()
+    setCarregando(false)
+  }
+
+  // Recalcula "assistir a seguir" / "sem assistir há tempo" a partir dos dados já em
+  // memória - não bate no banco de novo. Usado no carregamento inicial E depois de
+  // marcar um episódio (atualização local, sem recarregar a tela toda).
+  function recalcularBuckets(itens, episodios, assistidosAtual) {
+    const hoje = new Date()
     const seguir = []
     const semTempo = []
 
     for (const item of itens.filter((i) => i.status === 'vendo')) {
-      const eps = (episodios ?? []).filter((e) => e.titulo_id === item.titulo_id)
-      const proximo = eps.find((e) => !watchedMap.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
+      const eps = episodios.filter((e) => e.titulo_id === item.titulo_id)
+      const proximo = eps.find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
       if (!proximo) continue
-
-      const datasAssistidas = eps.map((e) => watchedMap.get(e.id)).filter(Boolean).map((d) => new Date(d))
-      const ultimaAtividade = datasAssistidas.length
-        ? new Date(Math.max(...datasAssistidas))
-        : new Date(item.added_at)
 
       const linha = {
         tituloId: item.titulo_id,
@@ -95,35 +119,18 @@ export default function SeriesPage() {
         episodeId: proximo.id,
       }
 
+      const datasAssistidas = eps.map((e) => assistidosAtual.get(e.id)).filter(Boolean).map((d) => new Date(d))
+      const ultimaAtividade = datasAssistidas.length ? new Date(Math.max(...datasAssistidas)) : new Date(item.added_at)
+
       if (hoje - ultimaAtividade > TRINTA_DIAS_MS) semTempo.push(linha)
       else seguir.push(linha)
     }
 
-    // Em breve: episódios futuros das séries que o usuário assiste ou já assistiu.
-    // episode.titulo_id referencia series.titulo_id, não titulo.id direto - não dá pra
-    // embutir "titulo(...)" num select de episode. Junta manualmente usando o mapa de
-    // título que já temos de "itens".
-    const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
-    const { data: futurosBrutos, error: erroFuturos } = await supabase
-      .from('episode')
-      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-      .in('titulo_id', tituloIds)
-      .gt('launch_date', hoje.toISOString().slice(0, 10))
-      .order('launch_date', { ascending: true })
-    if (erroFuturos) console.error('Erro ao buscar em breve:', erroFuturos)
-
-    const futuros = (futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) }))
-
     setAssistirASeguir(seguir)
     setSemAssistirHaTempo(semTempo)
-    setEmBreve(futuros)
-    await carregarHistorico()
-    setCarregando(false)
   }
 
   async function carregarHistorico() {
-    // Mesmo motivo do "em breve": episode não tem FK direta pra titulo, então busca
-    // episode sozinho e cruza com titulo numa segunda consulta.
     const { data: histBruto, error: erroHist } = await supabase
       .from('watched_episode')
       .select('watched_at, episode(id, season_number, episode_number, episode_name, titulo_id)')
@@ -138,20 +145,40 @@ export default function SeriesPage() {
       : { data: [] }
     const mapaTitulos = new Map((titulosHist ?? []).map((t) => [t.id, t]))
 
-    const historicoCompleto = (histBruto ?? []).map((h) => ({
-      ...h,
-      episode: { ...h.episode, titulo: mapaTitulos.get(h.episode?.titulo_id) },
-    }))
-    setHistorico(historicoCompleto)
+    setHistorico(
+      (histBruto ?? []).map((h) => ({ ...h, episode: { ...h.episode, titulo: mapaTitulos.get(h.episode?.titulo_id) } })),
+    )
   }
 
+  // Marca/desmarca um episódio com atualização LOCAL (sem recarregar a tela toda):
+  // 1. Dispara a animação de saída na linha clicada.
+  // 2. Grava no banco.
+  // 3. Atualiza o cache local de assistidos e recalcula só os buckets, na memória.
   async function marcarAssistido(episodeId, jaMarcado) {
-    console.log('[DEBUG] Marcando episodeId:', episodeId, '| já marcado?', jaMarcado)
+    setSaindoIds((prev) => new Set(prev).add(episodeId))
+    await new Promise((r) => setTimeout(r, DURACAO_ANIMACAO_MS))
+
     const { error } = jaMarcado
       ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
       : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
-    if (error) console.error('Erro ao marcar episódio assistido:', error)
-    carregar()
+
+    if (error) {
+      console.error('Erro ao marcar episódio assistido:', error)
+      setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
+      return
+    }
+
+    const novoAssistidosMapa = new Map(assistidosMapa)
+    if (jaMarcado) novoAssistidosMapa.delete(episodeId)
+    else novoAssistidosMapa.set(episodeId, new Date().toISOString())
+    setAssistidosMapa(novoAssistidosMapa)
+
+    recalcularBuckets(itensCache, episodiosCache, novoAssistidosMapa)
+    setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
+
+    // Histórico continua vindo do banco (ordenado pela data real do servidor),
+    // mas isso não bloqueia a atualização visual acima.
+    carregarHistorico()
   }
 
   return (
@@ -179,6 +206,7 @@ export default function SeriesPage() {
                 episodio={l.episodio}
                 episodioNome={l.episodioNome}
                 marcado={false}
+                saindo={saindoIds.has(l.episodeId)}
                 onMarcar={() => marcarAssistido(l.episodeId, false)}
                 onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}`)}
               />
@@ -196,6 +224,7 @@ export default function SeriesPage() {
                     episodio={l.episodio}
                     episodioNome={l.episodioNome}
                     marcado={false}
+                    saindo={saindoIds.has(l.episodeId)}
                     onMarcar={() => marcarAssistido(l.episodeId, false)}
                     onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}`)}
                   />
@@ -209,12 +238,13 @@ export default function SeriesPage() {
             {historico.map((h, i) => (
               <EpisodioRow
                 key={`${h.episode.id}-${i}`}
-                posterPath={h.episode.titulo.imagem}
-                tituloNome={h.episode.titulo.nome}
+                posterPath={h.episode.titulo?.imagem}
+                tituloNome={h.episode.titulo?.nome}
                 temporada={h.episode.season_number}
                 episodio={h.episode.episode_number}
                 episodioNome={h.episode.episode_name}
                 marcado={true}
+                saindo={saindoIds.has(h.episode.id)}
                 onMarcar={() => marcarAssistido(h.episode.id, true)}
                 onAbrirTitulo={() => navigate(`/titulo/${h.episode.titulo_id}`)}
               />
@@ -229,8 +259,8 @@ export default function SeriesPage() {
             {emBreve.map((e) => (
               <EpisodioRow
                 key={e.id}
-                posterPath={e.titulo.imagem}
-                tituloNome={e.titulo.nome}
+                posterPath={e.titulo?.imagem}
+                tituloNome={e.titulo?.nome}
                 temporada={e.season_number}
                 episodio={e.episode_number}
                 episodioNome={`${e.episode_name} · ${new Date(e.launch_date).toLocaleDateString()}`}

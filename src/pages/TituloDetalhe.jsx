@@ -20,6 +20,7 @@ export default function TituloDetalhe() {
   const [episodios, setEpisodios] = useState([])
   const [assistidos, setAssistidos] = useState(new Set())
   const [temporadaAberta, setTemporadaAberta] = useState(null)
+  const [confirmacao, setConfirmacao] = useState(null)
 
   useEffect(() => {
     carregar()
@@ -98,14 +99,25 @@ export default function TituloDetalhe() {
     carregar()
   }
 
-  async function marcarEpisodio(episodeId, marcado) {
-    const { error: erroToggle } = marcado
-      ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
-      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
-    if (erroToggle) console.error('Erro ao marcar episódio:', erroToggle)
+  // Episódios anteriores (temporada/episódio menor) ainda não assistidos - usado
+  // pra saber se vale perguntar "marcar os anteriores também?"
+  function episodiosAntesDe(alvo) {
+    return episodios.filter(
+      (e) =>
+        !assistidos.has(e.id) &&
+        (e.season_number < alvo.season_number ||
+          (e.season_number === alvo.season_number && e.episode_number < alvo.episode_number)),
+    )
+  }
 
-    // Recalcula quantos episódios estão marcados agora e deriva o status automaticamente:
-    // nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
+  // Grava (ou desfaz) a marcação de um lote de episódios de uma vez e recalcula o status
+  async function aplicarMarcacao(episodeIds, desmarcar) {
+    setConfirmacao(null)
+    const { error } = desmarcar
+      ? await supabase.from('watched_episode').delete().eq('user_id', user.id).in('episode_id', episodeIds)
+      : await supabase.from('watched_episode').upsert(episodeIds.map((eid) => ({ user_id: user.id, episode_id: eid })))
+    if (error) console.error('Erro ao marcar episódios:', error)
+
     const { data: assistidosAgora, error: erroAssistidos } = await supabase
       .from('watched_episode')
       .select('episode_id')
@@ -125,6 +137,44 @@ export default function TituloDetalhe() {
     if (erroStatus) console.error('Erro ao atualizar status do user_item:', erroStatus)
 
     carregar()
+  }
+
+  async function marcarEpisodio(episodeObj, marcado) {
+    if (marcado) {
+      // Desmarcar é direto, sem perguntar nada
+      await aplicarMarcacao([episodeObj.id], true)
+      return
+    }
+    const anteriores = episodiosAntesDe(episodeObj)
+    if (anteriores.length > 0) {
+      setConfirmacao({
+        mensagem: `Você ainda não marcou ${anteriores.length} episódio${anteriores.length > 1 ? 's' : ''} anterior${anteriores.length > 1 ? 'es' : ''}. Quer marcar ${anteriores.length > 1 ? 'eles' : 'ele'} também como assistido${anteriores.length > 1 ? 's' : ''}?`,
+        aoConfirmar: () => aplicarMarcacao([...anteriores.map((e) => e.id), episodeObj.id], false),
+        aoRecusar: () => aplicarMarcacao([episodeObj.id], false),
+      })
+    } else {
+      await aplicarMarcacao([episodeObj.id], false)
+    }
+  }
+
+  async function marcarTemporada(seasonNumber, todasAssistidas) {
+    const epsDaTemporada = episodios.filter((e) => e.season_number === seasonNumber)
+    if (todasAssistidas) {
+      await aplicarMarcacao(epsDaTemporada.map((e) => e.id), true)
+      return
+    }
+    const faltantes = epsDaTemporada.filter((e) => !assistidos.has(e.id))
+    const temporadasAnteriores = episodios.filter((e) => e.season_number < seasonNumber && !assistidos.has(e.id))
+
+    if (temporadasAnteriores.length > 0) {
+      setConfirmacao({
+        mensagem: `Tem temporada${temporadasAnteriores.length > 1 ? 's' : ''} anterior${temporadasAnteriores.length > 1 ? 'es' : ''} com episódio não assistido. Quer marcar ${temporadasAnteriores.length > 1 ? 'elas' : 'ela'} também como vista${temporadasAnteriores.length > 1 ? 's' : ''}?`,
+        aoConfirmar: () => aplicarMarcacao([...temporadasAnteriores.map((e) => e.id), ...faltantes.map((e) => e.id)], false),
+        aoRecusar: () => aplicarMarcacao(faltantes.map((e) => e.id), false),
+      })
+    } else {
+      await aplicarMarcacao(faltantes.map((e) => e.id), false)
+    }
   }
 
   async function marcarFilmeVisto() {
@@ -216,41 +266,76 @@ export default function TituloDetalhe() {
         <>
           <SectionLabel>Episódios</SectionLabel>
           <div className="px-4 pb-8 flex flex-col gap-2">
-            {temporadas.map((t) => (
-              <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
-                <button
-                  onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
-                  className="w-full flex justify-between px-3 py-2 text-sm text-ink font-mono"
-                >
-                  Temporada {t}
-                  <span className="text-muted">
-                    {episodios.filter((e) => e.season_number === t && assistidos.has(e.id)).length}/
-                    {episodios.filter((e) => e.season_number === t).length}
-                  </span>
-                </button>
-                {temporadaAberta === t && (
-                  <div className="flex flex-col">
-                    {episodios.filter((e) => e.season_number === t).map((e) => {
-                      const marcado = assistidos.has(e.id)
-                      return (
-                        <button
-                          key={e.id}
-                          onClick={() => marcarEpisodio(e.id, marcado)}
-                          className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2"
-                        >
-                          <span className={marcado ? 'text-muted' : 'text-ink'}>
-                            E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
-                          </span>
-                          <span className={marcado ? 'text-teal' : 'text-muted'}>{marcado ? '✓' : '○'}</span>
-                        </button>
-                      )
-                    })}
+            {temporadas.map((t) => {
+              const epsDaTemporada = episodios.filter((e) => e.season_number === t)
+              const assistidosCount = epsDaTemporada.filter((e) => assistidos.has(e.id)).length
+              const todasAssistidas = assistidosCount === epsDaTemporada.length
+              return (
+                <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
+                      className="flex-1 flex justify-between px-3 py-2 text-sm text-ink font-mono"
+                    >
+                      Temporada {t}
+                      <span className="text-muted">{assistidosCount}/{epsDaTemporada.length}</span>
+                    </button>
+                    <button
+                      onClick={() => marcarTemporada(t, todasAssistidas)}
+                      aria-label="Marcar temporada como vista"
+                      className={`w-8 h-8 mr-2 flex-shrink-0 rounded-full flex items-center justify-center border ${
+                        todasAssistidas ? 'bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
+                      }`}
+                    >
+                      <Check size={14} />
+                    </button>
                   </div>
-                )}
-              </div>
-            ))}
+                  {temporadaAberta === t && (
+                    <div className="flex flex-col">
+                      {epsDaTemporada.map((e) => {
+                        const marcado = assistidos.has(e.id)
+                        return (
+                          <button
+                            key={e.id}
+                            onClick={() => marcarEpisodio(e, marcado)}
+                            className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2"
+                          >
+                            <span className={marcado ? 'text-muted' : 'text-ink'}>
+                              E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
+                            </span>
+                            <span className={marcado ? 'text-teal' : 'text-muted'}>{marcado ? '✓' : '○'}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </>
+      )}
+
+      {confirmacao && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
+          <div className="bg-surface border border-white/10 rounded-2xl p-5 max-w-[340px] w-full">
+            <p className="text-sm text-ink mb-4 leading-relaxed">{confirmacao.mensagem}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmacao.aoRecusar}
+                className="flex-1 border border-white/15 rounded-xl py-2.5 text-sm text-muted font-display font-medium"
+              >
+                Não
+              </button>
+              <button
+                onClick={confirmacao.aoConfirmar}
+                className="flex-1 bg-amber text-bg rounded-xl py-2.5 text-sm font-display font-semibold shadow-[0_0_14px_rgba(243,194,85,0.35)]"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

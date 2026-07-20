@@ -1,8 +1,12 @@
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w200'
 
-export default function EpisodioRow({ posterPath, tituloNome, temporada, episodio, episodioNome, marcado, onMarcar, onAbrirTitulo }) {
+export default function EpisodioRow({ posterPath, tituloNome, temporada, episodio, episodioNome, marcado, onMarcar, onAbrirTitulo, saindo }) {
   return (
-    <div className="flex items-center gap-3 mx-4 mb-2.5 p-2.5 bg-surface rounded-2xl border border-white/5">
+    <div
+      className={`flex items-center gap-3 mx-4 mb-2.5 p-2.5 bg-surface rounded-2xl border border-white/5 transition-all duration-300 ease-out ${
+        saindo ? 'opacity-0 scale-95 -translate-y-1' : 'opacity-100 scale-100 translate-y-0'
+      }`}
+    >
       <button onClick={onAbrirTitulo} className="w-14 h-14 flex-shrink-0 bg-surface2 rounded-xl overflow-hidden">
         {posterPath && (
           <img src={`${POSTER_BASE}${posterPath}`} alt={tituloNome} className="w-full h-full object-cover" />
