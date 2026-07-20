@@ -146,6 +146,7 @@ export default function SeriesPage() {
   }
 
   async function marcarAssistido(episodeId, jaMarcado) {
+    console.log('[DEBUG] Marcando episodeId:', episodeId, '| já marcado?', jaMarcado)
     const { error } = jaMarcado
       ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
       : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
