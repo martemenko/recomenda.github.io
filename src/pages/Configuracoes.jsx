@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
+import { useNavigate } from 'react-router-dom'
 
 export default function Configuracoes() {
   const navigate = useNavigate()
