@@ -1,23 +1,55 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
+import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
-import { useNavigate } from 'react-router-dom'
 
 export default function Configuracoes() {
+  const { user, perfil, recarregarPerfil, sair } = useAuth()
   const navigate = useNavigate()
-  const [perfilPrivado, setPerfilPrivado] = useState(false)
-  const [csvFile, setCsvFile] = useState(null)
-  const [csvHeaders, setCsvHeaders] = useState([])
-  const [csvLinhas, setCsvLinhas] = useState([])
-  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
-  const [importando, setImportando] = useState(false)
-  const [progresso, setProgresso] = useState('')
-  const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
+  
   const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
-  const [statusMsg, setStatusMsg] = useState('')
+  const [importLog, setImportLog] = useState('')
+  const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
+  const [importando, setImportando] = useState(false)
+  const [csvRows, setCsvRows] = useState(null)
+  const [csvHeaders, setCsvHeaders] = useState([])
+  const [mapeamento, setMapeamento] = useState({})
 
-  // Parser robusto de CSV para lidar com aspas e vírgulas em campos ISO/strings
+  async function alternarPrivacidade() {
+    await supabase.from('usuarios').update({ perfil_privado: !perfil.perfil_privado }).eq('id', user.id)
+    recarregarPerfil()
+  }
+
+  async function exportarHistorico() {
+    const { data: epsBrutos, error } = await supabase
+      .from('watched_episode')
+      .select('watched_at, episode(episode_name, season_number, episode_number, titulo_id)')
+      .eq('user_id', user.id)
+    if (error) console.error('Erro ao exportar histórico:', error)
+
+    const idsExport = [...new Set((epsBrutos ?? []).map((e) => e.episode?.titulo_id).filter(Boolean))]
+    const { data: titulosExport } = idsExport.length
+      ? await supabase.from('titulo').select('id, nome').in('id', idsExport)
+      : { data: [] }
+    const mapaExport = new Map((titulosExport ?? []).map((t) => [t.id, t.nome]))
+
+    const linhas = [['titulo', 'temporada', 'episodio', 'nome_episodio', 'assistido_em']]
+    for (const e of epsBrutos ?? []) {
+      linhas.push([mapaExport.get(e.episode.titulo_id), e.episode.season_number, e.episode.episode_number, e.episode.episode_name, e.watched_at])
+    }
+    const csv = linhas.map((l) => l.map((v) => `"${v ?? ''}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'meu_historico.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function parseCSV(texto) {
     const linhasBrutas = texto.split(/\r?\n/).filter((l) => l.trim().length > 0)
     return linhasBrutas.map((linha) => {
@@ -41,342 +73,251 @@ export default function Configuracoes() {
   }
 
   function selecionarArquivo(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setCsvFile(file)
+    const arquivo = e.target.files?.[0]
+    if (!arquivo) return
     const reader = new FileReader()
-    reader.onload = (evt) => {
-      const texto = evt.target?.result ?? ''
-      const matriz = parseCSV(texto)
-      if (matriz.length < 2) {
-        setStatusMsg('Arquivo CSV inválido ou vazio.')
+    reader.onload = (ev) => {
+      const linhas = parseCSV(ev.target.result)
+      if (linhas.length < 2) {
+        setImportLog('Arquivo CSV inválido ou vazio.')
         return
       }
-      const headers = matriz[0]
-      const linhas = matriz.slice(1)
+      const headers = linhas[0]
       setCsvHeaders(headers)
-      setCsvLinhas(linhas)
-
-      // Auto-detecção inteligente de colunas
-      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
+      setCsvRows(linhas.slice(1))
+      
+      const guess = {}
       headers.forEach((h, i) => {
         const l = h.toLowerCase().trim()
-        if (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) guess.titulo = i
-        if (l === 'season' || l.includes('temporada')) guess.temporada = i
-        if (l === 'episode' || l.includes('episodio') || l.includes('episódio')) guess.episodio = i
-        if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
+        if (l.includes('titulo') || l.includes('título') || l.includes('title') || l.includes('name')) guess.titulo = i
+        if (l.includes('temporada') || l.includes('season')) guess.temporada = i
+        if (l.includes('episodio') || l.includes('episódio') || l.includes('episode')) guess.episodio = i
+        if ((l.includes('watched') || l.includes('assistid') || l.includes('status')) && !l.includes('_at') && !l.includes('date')) guess.assistido = i
       })
-
-      setMapeamento({
-        titulo: guess.titulo >= 0 ? String(guess.titulo) : '',
-        temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
-        episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
-        assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
-      })
+      setMapeamento(guess)
     }
-    reader.readAsText(file)
+    reader.readAsText(arquivo)
   }
 
   async function importar() {
-    if (!mapeamento.titulo || !mapeamento.temporada || !mapeamento.episodio) {
-      alert('Selecione ao menos os campos de Título, Temporada e Episódio.')
-      return
-    }
-
+    if (mapeamento.titulo === undefined) return setImportLog('Selecione qual coluna é o título.')
+    
     setImportando(true)
-    setProgresso('Iniciando importação...')
     setPorcentagemProgresso(0)
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Usuário não autenticado.')
-
-      const idxTitulo = parseInt(mapeamento.titulo, 10)
-      const idxTemp = parseInt(mapeamento.temporada, 10)
-      const idxEp = parseInt(mapeamento.episodio, 10)
-      const idxAssistido = mapeamento.assistido !== '' ? parseInt(mapeamento.assistido, 10) : -1
-
-      const seriesMap = new Map()
-
-      for (const linha of csvLinhas) {
-        const nomeSerie = linha[idxTitulo]
-        const temporadaNum = parseInt(linha[idxTemp], 10)
-        const episodioNum = parseInt(linha[idxEp], 10)
-
-        if (!nomeSerie || isNaN(temporadaNum) || isNaN(episodioNum)) continue
-
-        let assistido = true
-        if (idxAssistido >= 0) {
-          const val = String(linha[idxAssistido] ?? '').toLowerCase().trim()
-          assistido = val === 'true' || val === '1' || val === 'yes' || val === 'visto' || val === 'assistido'
-        }
-
-        if (!seriesMap.has(nomeSerie)) {
-          seriesMap.set(nomeSerie, [])
-        }
-        seriesMap.get(nomeSerie).push({ temporada: temporadaNum, episodio: episodioNum, assistido })
-      }
-
-      let processados = 0
-      const totalSeries = seriesMap.size
-
-      for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
-        processados++
-        const pct = Math.round((processados / totalSeries) * 100)
-        setPorcentagemProgresso(pct)
-        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
-
-        const { data: buscaData } = await supabase.functions.invoke('buscar-titulo', {
-          body: { query: nomeSerie },
-        })
-
-        const melhor = buscaData?.resultados?.[0] || buscaData?.[0]
-        if (!melhor || !melhor.tmdb_id) continue
-
-        const tmdbIdNum = Number(melhor.tmdb_id)
-
-        await supabase.functions.invoke('adicionar-titulo', {
-          body: { tmdb_id: tmdbIdNum, tipo: melhor.tipo || 'tv' },
-        })
-
-        const { data: episodiosBanco } = await supabase
-          .from('episode')
-          .select('id, season_number, episode_number')
-          .eq('titulo_id', tmdbIdNum)
-
-        if (!episodiosBanco || episodiosBanco.length === 0) continue
-
-        const idsParaMarcar = []
-
-        for (const epCsv of listaEpisodios) {
-          if (!epCsv.assistido) continue
-          const match = episodiosBanco.find(
-            (e) => Number(e.season_number) === epCsv.temporada && Number(e.episode_number) === epCsv.episodio
-          )
-          if (match) {
-            idsParaMarcar.push(match.id)
-          }
-        }
-
-        if (idsParaMarcar.length > 0) {
-          const payload = idsParaMarcar.map((epId) => ({
-            user_id: user.id,
-            episode_id: epId,
-          }))
-
-          await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
-        }
-
-        const totalEpisodiosSerie = episodiosBanco.length
-        
-        const { count: assistidosCount } = await supabase
-          .from('watched_episode')
-          .select('episode_id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .in('episode_id', episodiosBanco.map(e => e.id))
-
-        if (assistidosCount > 0) {
-          const status = assistidosCount >= totalEpisodiosSerie ? 'visto' : 'vendo'
-          await supabase.from('user_item').upsert({
-            user_id: user.id,
-            titulo_id: tmdbIdNum,
-            status,
-          }, { onConflict: 'user_id,titulo_id' })
-        }
-      }
-
-      setPorcentagemProgresso(100)
-      setProgresso('Importação concluída com sucesso!')
-      setTimeout(() => {
-        setProgresso('')
-        setPorcentagemProgresso(0)
-      }, 5000)
-    } catch (err) {
-      console.error(err)
-      setProgresso(`Erro na importação: ${err.message}`)
-    } finally {
-      setImportando(false)
+    
+    const grupos = new Map()
+    for (const linha of csvRows) {
+      const titulo = linha[mapeamento.titulo]?.trim()
+      if (!titulo) continue
+      if (!grupos.has(titulo)) grupos.set(titulo, [])
+      grupos.get(titulo).push(linha)
     }
+
+    let importados = 0
+    let processados = 0
+    const totalGrupos = grupos.size
+    const naoEncontrados = []
+    const semEpisodioMarcado = []
+
+    for (const [titulo, linhas] of grupos) {
+      processados++
+      const pct = Math.round((processados / totalGrupos) * 100)
+      setPorcentagemProgresso(pct)
+      setImportLog(`Processando ${processados}/${totalGrupos}: "${titulo}"...`)
+
+      try {
+        const { results } = await callFunction('buscar-titulo', { query: titulo })
+        const melhor = results?.[0]
+        if (!melhor) { naoEncontrados.push(titulo); continue }
+
+        await callFunction('adicionar-titulo', { tmdb_id: melhor.tmdb_id, media_type: melhor.media_type })
+
+        if (melhor.media_type === 'tv' && mapeamento.temporada !== undefined && mapeamento.episodio !== undefined) {
+          const { data: episodios } = await supabase
+            .from('episode')
+            .select('id, season_number, episode_number')
+            .eq('titulo_id', melhor.tmdb_id)
+
+          let marcados = 0
+          for (const linha of linhas) {
+            const s = parseInt(linha[mapeamento.temporada], 10)
+            const ep = parseInt(linha[mapeamento.episodio], 10)
+            const match = episodios?.find((e) => e.season_number === s && e.episode_number === ep)
+            if (!match) continue
+
+            const valorAssistido = mapeamento.assistido !== undefined ? linha[mapeamento.assistido]?.trim().toLowerCase() : null
+            const assistido = valorAssistido === null || ['true', '1', 'sim', 'yes', 'visto', 'assistido'].includes(valorAssistido)
+
+            if (assistido) {
+              const { error } = await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
+              if (!error) marcados++
+            } else {
+              await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', match.id)
+            }
+          }
+
+          if (marcados === 0 && linhas.length > 0) {
+            semEpisodioMarcado.push(titulo)
+          }
+
+          const { data: assistidosFinal } = await supabase
+            .from('watched_episode')
+            .select('episode_id')
+            .eq('user_id', user.id)
+            .in('episode_id', (episodios ?? []).map((e) => e.id))
+
+          const total = episodios?.length ?? 0
+          const totalAssistidos = assistidosFinal?.length ?? 0
+          const status = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= total ? 'visto' : 'vendo'
+          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
+        } else {
+          const valorAssistido = mapeamento.assistido !== undefined ? linhas[0][mapeamento.assistido]?.trim().toLowerCase() : null
+          const status = valorAssistido === null || ['true', '1', 'sim', 'yes', 'visto'].includes(valorAssistido) ? 'visto' : 'quero_ver'
+          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
+        }
+        importados++
+      } catch {
+        naoEncontrados.push(titulo)
+      }
+    }
+
+    setPorcentagemProgresso(100)
+    setImportando(false)
+    setImportLog(
+      `Importação concluída: ${importados}/${grupos.size} títulos.` +
+      (naoEncontrados.length ? ` Não encontrados: ${naoEncontrados.join(', ')}.` : '')
+    )
   }
 
   async function sairDaConta() {
     try {
-      await supabase.auth.signOut()
+      await sair()
       navigate('/login')
     } catch (err) {
-      alert(`Erro ao sair: ${err.message}`)
+      console.error('Erro ao sair:', err)
     }
   }
 
   async function excluirConta() {
-    if (confirmacaoExclusao !== 'EXCLUIR') {
-      alert('Digite EXCLUIR para confirmar.')
-      return
-    }
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      await supabase.from('watched_episode').delete().eq('user_id', user.id)
-      await supabase.from('user_item').delete().eq('user_id', user.id)
-      await supabase.auth.signOut()
-      window.location.reload()
+      await callFunction('excluir-conta', {})
+      await sair()
+      navigate('/login')
     } catch (err) {
-      alert(`Erro ao excluir conta: ${err.message}`)
+      console.error('Erro ao excluir conta:', err)
     }
   }
 
   return (
-    <div className="flex-1 pb-10">
-      {/* TopBar com função de voltar para o perfil */}
-      <TopBar title="Configurações" onBack={() => navigate('/perfil')} />
+    <>
+      {/* Botão ArrowLeft recriado dentro do slot correspondente da TopBar */}
+      <TopBar
+        title="Configurações"
+        leftSlot={
+          <button 
+            onClick={() => navigate(-1)} 
+            className="p-1.5 -ml-1.5 rounded-xl text-muted hover:text-ink hover:bg-white/5 transition-colors"
+            title="Voltar"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        }
+      />
 
-      <SectionLabel>Privacidade</SectionLabel>
-      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
-        <div>
-          <div className="font-display font-medium text-sm text-ink">Perfil Privado</div>
-          <div className="text-xs text-muted">Apenas você poderá ver seu histórico</div>
-        </div>
-        <input
-          type="checkbox"
-          checked={perfilPrivado}
-          onChange={(e) => setPerfilPrivado(e.target.checked)}
-          className="w-5 h-5 accent-amber rounded"
-        />
-      </div>
+      <div className="flex-1 overflow-y-auto scroll-area pb-10">
+        <SectionLabel>Privacidade</SectionLabel>
+        <label className="flex items-center justify-between px-4 py-2 cursor-pointer">
+          <span className="text-sm text-ink">Perfil privado</span>
+          <input 
+            type="checkbox" 
+            checked={!!perfil?.perfil_privado} 
+            onChange={alternarPrivacidade} 
+            className="accent-amber w-5 h-5 rounded cursor-pointer" 
+          />
+        </label>
 
-      <SectionLabel>Importar Dados (CSV)</SectionLabel>
-      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
-        <input
-          type="file"
-          accept=".csv"
-          onChange={selecionarArquivo}
-          className="block w-full text-xs text-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-display file:bg-surface2 file:text-amber hover:file:bg-amber/20"
-        />
+        <SectionLabel>Histórico</SectionLabel>
+        <div className="px-4 flex flex-col gap-3">
+          <button onClick={exportarHistorico} className="bg-surface border border-white/10 rounded-2xl py-3 text-sm text-ink hover:bg-white/5 transition-colors">
+            Exportar histórico (.csv)
+          </button>
 
-        {csvHeaders.length > 0 && (
-          <div className="space-y-3 pt-2 border-t border-white/5">
-            <div className="text-xs font-display font-semibold text-amber">Mapeamento de Colunas</div>
-            
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <label className="text-muted block mb-1">Título</label>
-                <select
-                  value={mapeamento.titulo}
-                  onChange={(e) => setMapeamento({ ...mapeamento, titulo: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
+          <input type="file" accept=".csv" onChange={selecionarArquivo} className="text-xs text-muted file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-surface2 file:text-amber file:text-xs" />
 
-              <div>
-                <label className="text-muted block mb-1">Temporada</label>
-                <select
-                  value={mapeamento.temporada}
-                  onChange={(e) => setMapeamento({ ...mapeamento, temporada: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">Episódio</label>
-                <select
-                  value={mapeamento.episodio}
-                  onChange={(e) => setMapeamento({ ...mapeamento, episodio: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">Status/Assistido (Op)</label>
-                <select
-                  value={mapeamento.assistido}
-                  onChange={(e) => setMapeamento({ ...mapeamento, assistido: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Todos Assistidos</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
+          {csvHeaders.length > 0 && (
+            <div className="flex flex-col gap-2 bg-surface border border-white/10 rounded-2xl p-3.5">
+              {['titulo', 'temporada', 'episodio', 'assistido'].map((campo) => (
+                <div key={campo} className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted uppercase font-mono">{campo}</span>
+                  <select
+                    value={mapeamento[campo] ?? ''}
+                    onChange={(e) => setMapeamento({ ...mapeamento, [campo]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                    className="bg-surface2 text-xs text-ink rounded-full px-3 py-1.5 border border-white/5"
+                  >
+                    <option value="">Ignorar</option>
+                    {csvHeaders.map((h, i) => (
+                      <option key={i} value={i}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <button 
+                onClick={importar} 
+                disabled={importando}
+                className="bg-amber text-bg rounded-2xl py-2.5 text-sm font-display font-semibold mt-1 shadow-[0_0_14px_rgba(243,194,85,0.3)] disabled:opacity-50"
+              >
+                {importando ? 'Importando...' : 'Importar'}
+              </button>
             </div>
+          )}
 
+          {importLog && (
+            <div className="space-y-1.5 bg-surface2 p-3 rounded-xl border border-amber/20">
+              <div className="text-xs text-amber font-mono flex justify-between items-center">
+                <span className="truncate pr-2">{importLog}</span>
+                {importando && <span className="font-bold">{porcentagemProgresso}%</span>}
+              </div>
+              {importando && (
+                <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                  <div
+                    className="h-full bg-amber transition-all duration-300 ease-out shadow-[0_0_8px_#f3c255]"
+                    style={{ width: `${porcentagemProgresso}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <SectionLabel>Conta</SectionLabel>
+        <div className="px-4 flex flex-col gap-3">
+          <button 
+            onClick={sairDaConta} 
+            className="w-full py-3 bg-surface border border-white/10 text-ink font-display font-semibold rounded-2xl text-sm transition-colors hover:bg-white/5"
+          >
+            Sair da Conta (Log out)
+          </button>
+
+          <div className="border-t border-white/5 pt-2 flex flex-col gap-2">
+            <p className="text-xs text-muted">
+              Excluir sua conta apaga permanentemente seu login e todos os seus dados. Digite EXCLUIR pra confirmar.
+            </p>
+            <input
+              value={confirmacaoExclusao}
+              onChange={(e) => setConfirmacaoExclusao(e.target.value)}
+              className="bg-surface border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-ink placeholder:text-muted/40"
+              placeholder="EXCLUIR"
+            />
             <button
-              onClick={importar}
-              disabled={importando}
-              className="w-full py-3 bg-amber text-bg font-display font-semibold rounded-xl text-sm transition-opacity disabled:opacity-50 mt-2"
+              onClick={excluirConta}
+              disabled={confirmacaoExclusao !== 'EXCLUIR'}
+              className="bg-danger text-white rounded-2xl py-3 text-sm font-display font-semibold disabled:opacity-40 transition-opacity"
             >
-              {importando ? 'Importando...' : 'Iniciar Importação'}
+              Excluir minha conta
             </button>
           </div>
-        )}
-
-        {progresso && (
-          <div className="space-y-2 bg-surface2 p-3 rounded-xl border border-amber/20">
-            <div className="text-xs text-amber font-mono flex justify-between items-center">
-              <span className="truncate pr-2">{progresso}</span>
-              <span className="font-bold">{porcentagemProgresso}%</span>
-            </div>
-            <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
-              <div
-                className="h-full bg-amber transition-all duration-300 ease-out shadow-[0_0_8px_#f3c255]"
-                style={{ width: `${porcentagemProgresso}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <SectionLabel>Sessão e Conta</SectionLabel>
-      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
-        {/* Botão de Sair da Conta */}
-        <div>
-          <button
-            onClick={sairDaConta}
-            className="w-full py-3 bg-surface2 hover:bg-white/10 text-ink border border-white/10 font-display font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
-          >
-            <span>Sair da Conta (Log out)</span>
-          </button>
-        </div>
-
-        <hr className="border-white/5" />
-
-        {/* Exclusão Definitiva */}
-        <div className="space-y-3 pt-1">
-          <div className="text-xs text-muted">
-            Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
-          </div>
-          <input
-            type="text"
-            value={confirmacaoExclusao}
-            onChange={(e) => setConfirmacaoExclusao(e.target.value)}
-            placeholder="Digite EXCLUIR"
-            className="w-full bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
-          />
-          <button
-            onClick={excluirConta}
-            disabled={confirmacaoExclusao !== 'EXCLUIR'}
-            className="w-full py-2.5 bg-red-500/10 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-xs transition-colors hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-red-500/10"
-          >
-            Excluir Conta Definitivamente
-          </button>
         </div>
       </div>
-    </div>
+    </>
   )
 }
