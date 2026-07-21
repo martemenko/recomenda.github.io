@@ -12,7 +12,7 @@ export default function Configuracoes() {
   const [csvFile, setCsvFile] = useState(null)
   const [csvHeaders, setCsvHeaders] = useState([])
   const [csvLinhas, setCsvLinhas] = useState([])
-  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
+  const [mapeamento, setMapeamento] = useState({ idSerie: '', temporada: '', episodio: '', assistido: '' })
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
@@ -60,17 +60,17 @@ export default function Configuracoes() {
       setCsvLinhas(linhas)
 
       // Auto-detecção inteligente de colunas
-      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
+      const guess = { idSerie: -1, temporada: -1, episodio: -1, assistido: -1 }
       headers.forEach((h, i) => {
         const l = h.toLowerCase().trim()
-        if (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) guess.titulo = i
+        if (l.includes('id') || l.includes('tvdb') || l.includes('tmdb') || l.includes('series_id')) guess.idSerie = i
         if (l === 'season' || l.includes('temporada')) guess.temporada = i
         if (l === 'episode' || l.includes('episodio') || l.includes('episódio')) guess.episodio = i
         if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
       })
-
+      
       setMapeamento({
-        titulo: guess.titulo >= 0 ? String(guess.titulo) : '',
+        idSerie: guess.idSerie >= 0 ? String(guess.idSerie) : '',
         temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
         episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
         assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
@@ -79,9 +79,9 @@ export default function Configuracoes() {
     reader.readAsText(file)
   }
 
- async function importar() {
-    if (!mapeamento.titulo || !mapeamento.temporada || !mapeamento.episodio) {
-      alert('Selecione ao menos os campos de Título (ou ID), Temporada e Episódio.')
+  async function importar() {
+    if (!mapeamento.idSerie || !mapeamento.temporada || !mapeamento.episodio) {
+      alert('Selecione ao menos os campos de ID da Série, Temporada e Episódio.')
       return
     }
 
