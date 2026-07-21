@@ -1,252 +1,307 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
-import { supabase, callFunction } from '../lib/supabaseClient'
-import { useAuth } from '../lib/auth'
+import { supabase } from '../lib/supabase'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 
 export default function Configuracoes() {
-  const { user, perfil, recarregarPerfil, sair } = useAuth()
-  const navigate = useNavigate()
-  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
-  const [importLog, setImportLog] = useState('')
-  const [csvRows, setCsvRows] = useState(null)
+  const [perfilPrivado, setPerfilPrivado] = useState(false)
+  const [csvFile, setCsvFile] = useState(null)
   const [csvHeaders, setCsvHeaders] = useState([])
-  const [mapeamento, setMapeamento] = useState({})
+  const [csvLinhas, setCsvLinhas] = useState([])
+  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
+  const [importando, setImportando] = useState(false)
+  const [progresso, setProgresso] = useState('')
+  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
+  const [statusMsg, setStatusMsg] = useState('')
 
-  async function alternarPrivacidade() {
-    await supabase.from('usuarios').update({ perfil_privado: !perfil.perfil_privado }).eq('id', user.id)
-    recarregarPerfil()
-  }
-
-  async function exportarHistorico() {
-    const { data: epsBrutos, error } = await supabase
-      .from('watched_episode')
-      .select('watched_at, episode(episode_name, season_number, episode_number, titulo_id)')
-      .eq('user_id', user.id)
-    if (error) console.error('Erro ao exportar histórico:', error)
-
-    const idsExport = [...new Set((epsBrutos ?? []).map((e) => e.episode?.titulo_id).filter(Boolean))]
-    const { data: titulosExport } = idsExport.length
-      ? await supabase.from('titulo').select('id, nome').in('id', idsExport)
-      : { data: [] }
-    const mapaExport = new Map((titulosExport ?? []).map((t) => [t.id, t.nome]))
-
-    const linhas = [['titulo', 'temporada', 'episodio', 'nome_episodio', 'assistido_em']]
-    for (const e of epsBrutos ?? []) {
-      linhas.push([mapaExport.get(e.episode.titulo_id), e.episode.season_number, e.episode.episode_number, e.episode.episode_name, e.watched_at])
-    }
-    const csv = linhas.map((l) => l.map((v) => `"${v ?? ''}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'meu_historico.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
+  // Parser robusto de CSV para lidar com aspas e vírgulas em campos ISO/strings
   function parseCSV(texto) {
-    const linhas = texto.split(/\r?\n/).filter(Boolean).map((l) => l.split(',').map((c) => c.replace(/^"|"$/g, '').trim()))
-    return linhas
+    const linhasBrutas = texto.split(/\r?\n/).filter((l) => l.trim().length > 0)
+    return linhasBrutas.map((linha) => {
+      const resultado = []
+      let dentroDeAspas = false
+      let campoAtual = ''
+      for (let i = 0; i < linha.length; i++) {
+        const char = linha[i]
+        if (char === '"') {
+          dentroDeAspas = !dentroDeAspas
+        } else if (char === ',' && !dentroDeAspas) {
+          resultado.push(campoAtual.trim().replace(/^"|"$/g, ''))
+          campoAtual = ''
+        } else {
+          campoAtual += char
+        }
+      }
+      resultado.push(campoAtual.trim().replace(/^"|"$/g, ''))
+      return resultado
+    })
   }
 
   function selecionarArquivo(e) {
-    const arquivo = e.target.files[0]
-    if (!arquivo) return
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvFile(file)
     const reader = new FileReader()
-    reader.onload = (ev) => {
-      const linhas = parseCSV(ev.target.result)
-      const headers = linhas[0]
+    reader.onload = (evt) => {
+      const texto = evt.target?.result ?? ''
+      const matriz = parseCSV(texto)
+      if (matriz.length < 2) {
+        setStatusMsg('Arquivo CSV inválido ou vazio.')
+        return
+      }
+      const headers = matriz[0]
+      const linhas = matriz.slice(1)
       setCsvHeaders(headers)
-      setCsvRows(linhas.slice(1))
-      const guess = {}
+      setCsvLinhas(linhas)
+
+      // Auto-detecção inteligente de colunas (compatível com TV Time, Trakt, IMDB, etc)
+      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
       headers.forEach((h, i) => {
-        const l = h.toLowerCase()
-        if (l.includes('titulo') || l.includes('título') || l.includes('title') || l.includes('name')) guess.titulo = i
-        if (l.includes('temporada') || l.includes('season')) guess.temporada = i
-        if (l.includes('episodio') || l.includes('episódio') || l.includes('episode')) guess.episodio = i
-        if ((l.includes('watched') || l.includes('assistid')) && !l.includes('_at') && !l.includes('date') && !l.includes('quando')) guess.assistido = i
+        const l = h.toLowerCase().trim()
+        if (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) guess.titulo = i
+        if (l === 'season' || l.includes('temporada')) guess.temporada = i
+        if (l === 'episode' || l.includes('episodio') || l.includes('episódio')) guess.episodio = i
+        if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
       })
-      setMapeamento(guess)
+
+      setMapeamento({
+        titulo: guess.titulo >= 0 ? String(guess.titulo) : '',
+        temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
+        episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
+        assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
+      })
     }
-    reader.readAsText(arquivo)
+    reader.readAsText(file)
   }
 
   async function importar() {
-    if (mapeamento.titulo === undefined) return setImportLog('Selecione qual coluna é o título.')
-    const grupos = new Map()
-    for (const linha of csvRows) {
-      const titulo = linha[mapeamento.titulo]?.trim()
-      if (!titulo) continue
-      if (!grupos.has(titulo)) grupos.set(titulo, [])
-      grupos.get(titulo).push(linha)
+    if (!mapeamento.titulo || !mapeamento.temporada || !mapeamento.episodio) {
+      alert('Selecione ao menos os campos de Título, Temporada e Episódio.')
+      return
     }
 
-    let importados = 0
-    const naoEncontrados = []
-    const semEpisodioMarcado = []
-    for (const [titulo, linhas] of grupos) {
-      setImportLog(`Importando "${titulo}"…`)
-      try {
-        const { results } = await callFunction('buscar-titulo', { query: titulo })
-        const melhor = results?.[0]
-        if (!melhor) { naoEncontrados.push(titulo); continue }
+    setImportando(true)
+    setProgresso('Iniciando importação...')
 
-        // Adiciona sem forçar status - o status real é calculado depois, com base no que
-        // de fato foi marcado como assistido (senão tudo vira "já vi" na hora, errado).
-        await callFunction('adicionar-titulo', { tmdb_id: melhor.tmdb_id, media_type: melhor.media_type })
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Usuário não autenticado.')
 
-        if (melhor.media_type === 'tv' && mapeamento.temporada !== undefined && mapeamento.episodio !== undefined) {
-          const { data: episodios, error: erroEpisodios } = await supabase
-            .from('episode')
-            .select('id, season_number, episode_number')
-            .eq('titulo_id', melhor.tmdb_id)
-          if (erroEpisodios) console.error(`Erro ao buscar episódios de "${titulo}":`, erroEpisodios)
+      const idxTitulo = parseInt(mapeamento.titulo, 10)
+      const idxTemp = parseInt(mapeamento.temporada, 10)
+      const idxEp = parseInt(mapeamento.episodio, 10)
+      const idxAssistido = mapeamento.assistido !== '' ? parseInt(mapeamento.assistido, 10) : -1
 
-          const semNumero = (episodios ?? []).filter((e) => e.season_number === null || e.episode_number === null).length
-          if (semNumero > 0) {
-            console.warn(
-              `"${titulo}": ${semNumero} episódio(s) sem season_number/episode_number no banco. ` +
-              `Isso indica que a Edge Function "adicionar-titulo" no Supabase está com uma versão antiga ` +
-              `(sem esses campos) - precisa colar a versão mais recente no editor e fazer Deploy de novo.`
-            )
-          }
+      // 1. Agrupar episódios por série para otimizar chamadas e evitar inconsistências
+      const seriesMap = new Map()
 
-          let marcados = 0
-          for (const linha of linhas) {
-            const s = parseInt(linha[mapeamento.temporada], 10)
-            const ep = parseInt(linha[mapeamento.episodio], 10)
-            const match = episodios?.find((e) => e.season_number === s && e.episode_number === ep)
-            if (!match) continue
+      for (const linha of csvLinhas) {
+        const nomeSerie = linha[idxTitulo]
+        const temporadaNum = parseInt(linha[idxTemp], 10)
+        const episodioNum = parseInt(linha[idxEp], 10)
 
-            // Respeita a coluna is_watched: só marca se ela existir E disser 'true'/'1'/'sim'.
-            // Se a coluna não foi mapeada, assume que toda linha do CSV é um episódio assistido.
-            const valorAssistido = mapeamento.assistido !== undefined ? linha[mapeamento.assistido]?.trim().toLowerCase() : null
-            const assistido = valorAssistido === null || ['true', '1', 'sim', 'yes'].includes(valorAssistido)
+        if (!nomeSerie || isNaN(temporadaNum) || isNaN(episodioNum)) continue
 
-            if (assistido) {
-              const { error } = await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: match.id })
-              if (error) console.error(`Erro ao marcar episódio de "${titulo}":`, error)
-              else marcados++
-            } else {
-              await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', match.id)
-            }
-          }
-          if (marcados === 0 && linhas.length > 0) {
-            console.warn(`"${titulo}": nenhum episódio bateu com season/episode do banco (0 de ${linhas.length} linhas).`)
-            semEpisodioMarcado.push(titulo)
-          }
-
-          // Deriva o status real: nenhum assistido -> quero_ver | alguns -> vendo | todos -> visto
-          const { data: assistidosFinal } = await supabase
-            .from('watched_episode')
-            .select('episode_id')
-            .eq('user_id', user.id)
-            .in('episode_id', (episodios ?? []).map((e) => e.id))
-
-
-          const total = episodios?.length ?? 0
-          const totalAssistidos = assistidosFinal?.length ?? 0
-          const status = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= total ? 'visto' : 'vendo'
-          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
-        } else {
-          // Filme: se a linha tiver coluna de assistido e disser 'false', mantém quero_ver; senão marca visto.
-          const valorAssistido = mapeamento.assistido !== undefined ? linhas[0][mapeamento.assistido]?.trim().toLowerCase() : null
-          const status = valorAssistido === null || ['true', '1', 'sim', 'yes'].includes(valorAssistido) ? 'visto' : 'quero_ver'
-          await supabase.from('user_item').update({ status }).eq('user_id', user.id).eq('titulo_id', melhor.tmdb_id)
+        let assistido = true
+        if (idxAssistido >= 0) {
+          const val = String(linha[idxAssistido] ?? '').toLowerCase().trim()
+          assistido = val === 'true' || val === '1' || val === 'yes' || val === 'visto' || val === 'assistido'
         }
-        importados++
-      } catch {
-        naoEncontrados.push(titulo)
-      }
-    }
-    setImportLog(
-      `Importação concluída: ${importados}/${grupos.size} títulos.` +
-      (naoEncontrados.length ? ` Não encontrados: ${naoEncontrados.join(', ')}.` : '') +
-      (semEpisodioMarcado.length
-        ? ` ⚠ Sem nenhum episódio marcado (provável Edge Function "adicionar-titulo" desatualizada no Supabase): ${semEpisodioMarcado.join(', ')}.`
-        : '')
-    )
-  }
 
-  async function excluirConta() {
-    await callFunction('excluir-conta', {})
-    await sair()
-    navigate('/login')
+        if (!seriesMap.has(nomeSerie)) {
+          seriesMap.set(nomeSerie, [])
+        }
+        seriesMap.get(nomeSerie).push({ temporada: temporadaNum, episodio: episodioNum, assistido })
+      }
+
+      let processados = 0
+      const totalSeries = seriesMap.size
+
+      // 2. Processar série por série
+      for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
+        processados++
+        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
+
+        // Buscar título no TMDB via Edge Function
+        const { data: buscaData } = await supabase.functions.invoke('buscar-titulo', {
+          body: { query: nomeSerie },
+        })
+
+        const melhor = buscaData?.resultados?.[0] || buscaData?.[0]
+        if (!melhor || !melhor.tmdb_id) continue
+
+        const tmdbIdNum = Number(melhor.tmdb_id)
+
+        // Assegurar que a série e seus episódios existam na base local
+        await supabase.functions.invoke('adicionar-titulo', {
+          body: { tmdb_id: tmdbIdNum, tipo: melhor.tipo || 'tv' },
+        })
+
+        // Buscar os episódios cadastrados no banco local (garantindo tipo Number)
+        const { data: episodiosBanco } = await supabase
+          .from('episode')
+          .select('id, season_number, episode_number')
+          .eq('titulo_id', tmdbIdNum)
+
+        if (!episodiosBanco || episodiosBanco.length === 0) continue
+
+        const idsParaMarcar = []
+
+        for (const epCsv of listaEpisodios) {
+          if (!epCsv.assistido) continue
+          const match = episodiosBanco.find(
+            (e) => Number(e.season_number) === epCsv.temporada && Number(e.episode_number) === epCsv.episodio
+          )
+          if (match) {
+            idsParaMarcar.push(match.id)
+          }
+        }
+
+        // Registrar episódios assistidos em lote
+        if (idsParaMarcar.length > 0) {
+          const payload = idsParaMarcar.map((epId) => ({
+            user_id: user.id,
+            episode_id: epId,
+          }))
+
+          await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
+        }
+
+        // Atualizar status no user_item sem corromper para 'quero_ver' se nada foi associado
+        const totalEpisodiosSerie = episodiosBanco.length
+        
+        // Buscar total real de episódios assistidos desta série pelo usuário no banco
+        const { count: assistidosCount } = await supabase
+          .from('watched_episode')
+          .select('episode_id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('episode_id', episodiosBanco.map(e => e.id))
+
+        if (assistidosCount > 0) {
+          const status = assistidosCount >= totalEpisodiosSerie ? 'visto' : 'vendo'
+          await supabase.from('user_item').upsert({
+            user_id: user.id,
+            titulo_id: tmdbIdNum,
+            status,
+          }, { onConflict: 'user_id,titulo_id' })
+        }
+      }
+
+      setProgresso('Importação concluída com sucesso!')
+      setTimeout(() => setProgresso(''), 4000)
+    } catch (err) {
+      console.error(err)
+      setProgresso(`Erro na importação: ${err.message}`)
+    } finally {
+      setImportando(false)
+    }
   }
 
   return (
-    <>
-      <TopBar
-        title="Configurações"
-        rightSlot={
-          <button onClick={() => navigate(-1)} className="text-muted">
-            <ArrowLeft size={20} />
-          </button>
-        }
-      />
-      <div className="flex-1 overflow-y-auto scroll-area">
-        <SectionLabel>Privacidade</SectionLabel>
-        <label className="flex items-center justify-between px-4 py-2">
-          <span className="text-sm text-ink">Perfil privado</span>
-          <input type="checkbox" checked={!!perfil?.perfil_privado} onChange={alternarPrivacidade} className="accent-amber w-5 h-5" />
-        </label>
+    <div className="flex-1 pb-10">
+      <TopBar title="Configurações" />
 
-        <SectionLabel>Histórico</SectionLabel>
-        <div className="px-4 flex flex-col gap-3">
-          <button onClick={exportarHistorico} className="bg-surface border border-white/10 rounded-2xl py-3 text-sm text-ink">
-            Exportar histórico (.csv)
-          </button>
-
-          <input type="file" accept=".csv" onChange={selecionarArquivo} className="text-xs text-muted" />
-
-          {csvHeaders.length > 0 && (
-            <div className="flex flex-col gap-2 bg-surface border border-white/10 rounded-2xl p-3.5">
-              {['titulo', 'temporada', 'episodio', 'assistido'].map((campo) => (
-                <div key={campo} className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted uppercase font-mono">{campo}</span>
-                  <select
-                    value={mapeamento[campo] ?? ''}
-                    onChange={(e) => setMapeamento({ ...mapeamento, [campo]: e.target.value === '' ? undefined : Number(e.target.value) })}
-                    className="bg-surface2 text-xs text-ink rounded-full px-3 py-1.5"
-                  >
-                    <option value="">Ignorar</option>
-                    {csvHeaders.map((h, i) => (
-                      <option key={i} value={i}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              <button onClick={importar} className="bg-amber text-bg rounded-2xl py-2.5 text-sm font-display font-semibold mt-1 shadow-[0_0_14px_rgba(243,194,85,0.3)]">
-                Importar
-              </button>
-            </div>
-          )}
-          {importLog && <div className="text-xs text-muted font-mono">{importLog}</div>}
+      <SectionLabel>Privacidade</SectionLabel>
+      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
+        <div>
+          <div className="font-display font-medium text-sm text-ink">Perfil Privado</div>
+          <div className="text-xs text-muted">Apenas você poderá ver seu histórico</div>
         </div>
-
-        <SectionLabel>Conta</SectionLabel>
-        <div className="px-4 pb-8 flex flex-col gap-2">
-          <p className="text-xs text-muted">
-            Excluir sua conta apaga permanentemente seu login e todos os seus dados. Digite EXCLUIR pra confirmar.
-          </p>
-          <input
-            value={confirmacaoExclusao}
-            onChange={(e) => setConfirmacaoExclusao(e.target.value)}
-            className="bg-surface border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-ink"
-            placeholder="EXCLUIR"
-          />
-          <button
-            onClick={excluirConta}
-            disabled={confirmacaoExclusao !== 'EXCLUIR'}
-            className="bg-danger text-white rounded-2xl py-3 text-sm font-display font-semibold disabled:opacity-40"
-          >
-            Excluir minha conta
-          </button>
-        </div>
+        <input
+          type="checkbox"
+          checked={perfilPrivado}
+          onChange={(e) => setPerfilPrivado(e.target.checked)}
+          className="w-5 h-5 accent-amber rounded"
+        />
       </div>
-    </>
+
+      <SectionLabel>Importar Dados (CSV)</SectionLabel>
+      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
+        <input
+          type="file"
+          accept=".csv"
+          onChange={selecionarArquivo}
+          className="block w-full text-xs text-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-display file:bg-surface2 file:text-amber hover:file:bg-amber/20"
+        />
+
+        {csvHeaders.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-white/5">
+            <div className="text-xs font-display font-semibold text-amber">Mapeamento de Colunas</div>
+            
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <label className="text-muted block mb-1">Título</label>
+                <select
+                  value={mapeamento.titulo}
+                  onChange={(e) => setMapeamento({ ...mapeamento, titulo: e.target.value })}
+                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
+                >
+                  <option value="">Selecione...</option>
+                  {csvHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-muted block mb-1">Temporada</label>
+                <select
+                  value={mapeamento.temporada}
+                  onChange={(e) => setMapeamento({ ...mapeamento, temporada: e.target.value })}
+                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
+                >
+                  <option value="">Selecione...</option>
+                  {csvHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-muted block mb-1">Episódio</label>
+                <select
+                  value={mapeamento.episodio}
+                  onChange={(e) => setMapeamento({ ...mapeamento, episodio: e.target.value })}
+                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
+                >
+                  <option value="">Selecione...</option>
+                  {csvHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-muted block mb-1">Status/Assistido (Op)</label>
+                <select
+                  value={mapeamento.assistido}
+                  onChange={(e) => setMapeamento({ ...mapeamento, assistido: e.target.value })}
+                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
+                >
+                  <option value="">Todos Assistidos</option>
+                  {csvHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={importar}
+              disabled={importando}
+              className="w-full py-3 bg-amber text-bg font-display font-semibold rounded-xl text-sm transition-opacity disabled:opacity-50 mt-2"
+            >
+              {importando ? 'Importando...' : 'Iniciar Importação'}
+            </button>
+          </div>
+        )}
+
+        {progresso && (
+          <div className="text-xs text-amber font-mono bg-surface2 p-2.5 rounded-xl border border-amber/20">
+            {progresso}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
