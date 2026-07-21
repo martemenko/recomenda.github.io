@@ -54,7 +54,7 @@ export default function SeriesPage() {
 
     const tituloIds = itens.map((i) => i.titulo_id)
     if (tituloIds.length === 0) {
-      setEpisodiosCache([]); setAssistidosSet(new Set())
+      setEpisodiosCache([]); setAssistidosMapa(new Map())
       setAssistirASeguir([]); setSemAssistirHaTempo([]); setEmBreve([])
       await carregarHistorico()
       setCarregando(false)
