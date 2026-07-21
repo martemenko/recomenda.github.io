@@ -11,6 +11,7 @@ export default function Configuracoes() {
   const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
+  const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
   const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
 
@@ -82,6 +83,7 @@ export default function Configuracoes() {
 
     setImportando(true)
     setProgresso('Iniciando importação...')
+    setPorcentagemProgresso(0)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -120,6 +122,8 @@ export default function Configuracoes() {
       // 2. Processar série por série
       for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
         processados++
+        const pct = Math.round((processados / totalSeries) * 100)
+        setPorcentagemProgresso(pct)
         setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
 
         // Buscar título no TMDB via Edge Function
@@ -137,7 +141,7 @@ export default function Configuracoes() {
           body: { tmdb_id: tmdbIdNum, tipo: melhor.tipo || 'tv' },
         })
 
-        // Buscar os episódios cadastrados no banco local (garantindo tipo Number)
+        // Buscar os episódios cadastrados no banco local
         const { data: episodiosBanco } = await supabase
           .from('episode')
           .select('id, season_number, episode_number')
@@ -167,10 +171,9 @@ export default function Configuracoes() {
           await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
         }
 
-        // Atualizar status no user_item sem corromper para 'quero_ver' se nada foi associado
+        // Atualizar status no user_item
         const totalEpisodiosSerie = episodiosBanco.length
         
-        // Buscar total real de episódios assistidos desta série pelo usuário no banco
         const { count: assistidosCount } = await supabase
           .from('watched_episode')
           .select('episode_id', { count: 'exact', head: true })
@@ -187,13 +190,35 @@ export default function Configuracoes() {
         }
       }
 
+      setPorcentagemProgresso(100)
       setProgresso('Importação concluída com sucesso!')
-      setTimeout(() => setProgresso(''), 4000)
+      setTimeout(() => {
+        setProgresso('')
+        setPorcentagemProgresso(0)
+      }, 5000)
     } catch (err) {
       console.error(err)
       setProgresso(`Erro na importação: ${err.message}`)
     } finally {
       setImportando(false)
+    }
+  }
+
+  async function excluirConta() {
+    if (confirmacaoExclusao !== 'EXCLUIR') {
+      alert('Digite EXCLUIR para confirmar.')
+      return
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      await supabase.from('watched_episode').delete().eq('user_id', user.id)
+      await supabase.from('user_item').delete().eq('user_id', user.id)
+      await supabase.auth.signOut()
+      window.location.reload()
+    } catch (err) {
+      alert(`Erro ao excluir conta: ${err.message}`)
     }
   }
 
@@ -297,10 +322,40 @@ export default function Configuracoes() {
         )}
 
         {progresso && (
-          <div className="text-xs text-amber font-mono bg-surface2 p-2.5 rounded-xl border border-amber/20">
-            {progresso}
+          <div className="space-y-2 bg-surface2 p-3 rounded-xl border border-amber/20">
+            <div className="text-xs text-amber font-mono flex justify-between items-center">
+              <span className="truncate pr-2">{progresso}</span>
+              <span className="font-bold">{porcentagemProgresso}%</span>
+            </div>
+            <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/5">
+              <div
+                className="h-full bg-amber transition-all duration-300 ease-out shadow-[0_0_8px_#f3c255]"
+                style={{ width: `${porcentagemProgresso}%` }}
+              />
+            </div>
           </div>
         )}
+      </div>
+
+      <SectionLabel>Conta</SectionLabel>
+      <div className="mx-4 p-4 bg-surface rounded-2xl border border-red-500/20 space-y-3">
+        <div className="text-xs text-muted">
+          Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
+        </div>
+        <input
+          type="text"
+          value={confirmacaoExclusao}
+          onChange={(e) => setConfirmacaoExclusao(e.target.value)}
+          placeholder="Digite EXCLUIR"
+          className="w-full bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
+        />
+        <button
+          onClick={excluirConta}
+          disabled={confirmacaoExclusao !== 'EXCLUIR'}
+          className="w-full py-2.5 bg-red-500/10 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-xs transition-colors hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-red-500/10"
+        >
+          Excluir Conta Definitivamente
+        </button>
       </div>
     </div>
   )
