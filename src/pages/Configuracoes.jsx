@@ -12,7 +12,7 @@ export default function Configuracoes() {
   const [csvFile, setCsvFile] = useState(null)
   const [csvHeaders, setCsvHeaders] = useState([])
   const [csvLinhas, setCsvLinhas] = useState([])
-  const [mapeamento, setMapeamento] = useState({ idSerie: '', temporada: '', episodio: '', assistido: '' })
+  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
@@ -60,17 +60,17 @@ export default function Configuracoes() {
       setCsvLinhas(linhas)
 
       // Auto-detecção inteligente de colunas
-      const guess = { idSerie: -1, temporada: -1, episodio: -1, assistido: -1 }
+      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
       headers.forEach((h, i) => {
         const l = h.toLowerCase().trim()
-        if (l.includes('id') || l.includes('tvdb') || l.includes('tmdb') || l.includes('series_id')) guess.idSerie = i
+        if (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) guess.titulo = i
         if (l === 'season' || l.includes('temporada')) guess.temporada = i
         if (l === 'episode' || l.includes('episodio') || l.includes('episódio')) guess.episodio = i
         if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
       })
-      
+
       setMapeamento({
-        idSerie: guess.idSerie >= 0 ? String(guess.idSerie) : '',
+        titulo: guess.titulo >= 0 ? String(guess.titulo) : '',
         temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
         episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
         assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
@@ -80,8 +80,8 @@ export default function Configuracoes() {
   }
 
   async function importar() {
-    if (!mapeamento.idSerie || !mapeamento.temporada || !mapeamento.episodio) {
-      alert('Selecione ao menos os campos de ID da Série, Temporada e Episódio.')
+    if (!mapeamento.titulo || !mapeamento.temporada || !mapeamento.episodio) {
+      alert('Selecione ao menos os campos de Título, Temporada e Episódio.')
       return
     }
 
@@ -101,11 +101,11 @@ export default function Configuracoes() {
       const seriesMap = new Map()
 
       for (const linha of csvLinhas) {
-        const valorIdentificador = linha[idxTitulo]?.trim()
+        const nomeSerie = linha[idxTitulo]
         const temporadaNum = parseInt(linha[idxTemp], 10)
         const episodioNum = parseInt(linha[idxEp], 10)
 
-        if (!valorIdentificador || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+        if (!nomeSerie || isNaN(temporadaNum) || isNaN(episodioNum)) continue
 
         let assistido = true
         if (idxAssistido >= 0) {
@@ -113,88 +113,43 @@ export default function Configuracoes() {
           assistido = val === 'true' || val === '1' || val === 'yes' || val === 'visto' || val === 'assistido'
         }
 
-        if (!seriesMap.has(valorIdentificador)) {
-          seriesMap.set(valorIdentificador, [])
+        if (!seriesMap.has(nomeSerie)) {
+          seriesMap.set(nomeSerie, [])
         }
-        seriesMap.get(valorIdentificador).push({ temporada: temporadaNum, episodio: episodioNum, assistido })
+        seriesMap.get(nomeSerie).push({ temporada: temporadaNum, episodio: episodioNum, assistido })
       }
 
       let processados = 0
       const totalSeries = seriesMap.size
 
-      for (const [identificador, listaEpisodios] of seriesMap.entries()) {
+      for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
         processados++
         const pct = Math.round((processados / totalSeries) * 100)
         setPorcentagemProgresso(pct)
-        setProgresso(`Processando ${processados}/${totalSeries}: "${identificador}"...`)
+        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
 
-        let tmdbIdFinal = null
-        let mediaTypeFinal = 'tv'
-
-        const eNumero = !isNaN(Number(identificador))
-
-        // Se não for um valor numérico (ID), pula direto já que não usaremos busca por nome
-        if (!eNumero) continue
-
-        const numId = Number(identificador)
-
-        // -------------------------------------------------------------
-        // PASSO 1: Tenta validar/usar como TMDB ID direto
-        // -------------------------------------------------------------
-        const { data: idData } = await supabase.functions.invoke('buscar-titulo', {
-          body: { tmdb_id: numId },
+        const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
+          body: { query: nomeSerie },
         })
+        if (erroBusca) { console.error(`Erro ao buscar "${nomeSerie}":`, erroBusca); continue }
 
-        if (idData?.tmdb_id || idData?.id) {
-          tmdbIdFinal = numId
-        }
+        const melhor = buscaData?.results?.[0]
+        if (!melhor || !melhor.tmdb_id) continue
 
-        // -------------------------------------------------------------
-        // PASSO 2: Se falhou no TMDB, tenta resolver como TVDB ID (/find)
-        // -------------------------------------------------------------
-        if (!tmdbIdFinal) {
-          const { data: findData } = await supabase.functions.invoke('buscar-por-tvdb', {
-            body: { tvdb_id: identificador },
-          })
+        const tmdbIdNum = Number(melhor.tmdb_id)
 
-          const resultadoFind = findData?.tv_results?.[0] || findData?.movie_results?.[0]
-          if (resultadoFind?.id) {
-            tmdbIdFinal = Number(resultadoFind.id)
-            mediaTypeFinal = findData?.tv_results?.length ? 'tv' : 'movie'
-          }
-        }
-
-        // Se não encontrou por nenhum dos dois IDs, ignora
-        if (!tmdbIdFinal) continue
-
-        // 1. Adiciona/Garante o título no banco local
-        const { data: tituloInserido, error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
-          body: { tmdb_id: tmdbIdFinal, media_type: mediaTypeFinal },
+        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+          body: { tmdb_id: tmdbIdNum, media_type: melhor.media_type || 'tv' },
         })
-        if (erroAdd) { console.error(`Erro ao adicionar "${identificador}":`, erroAdd); continue }
+        if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
 
-        // 2. Resgata a chave primária local (ID interno da tabela 'titulo')
-        let tituloIdInterno = tituloInserido?.id
-        if (!tituloIdInterno) {
-          const { data: tBanco } = await supabase
-            .from('titulo')
-            .select('id')
-            .eq('tmdb_id', tmdbIdFinal)
-            .single()
-          tituloIdInterno = tBanco?.id
-        }
-
-        if (!tituloIdInterno) continue
-
-        // 3. Busca os episódios no banco local usando o ID INTERNO (FK)
         const { data: episodiosBanco } = await supabase
           .from('episode')
           .select('id, season_number, episode_number')
-          .eq('titulo_id', tituloIdInterno)
+          .eq('titulo_id', tmdbIdNum)
 
         if (!episodiosBanco || episodiosBanco.length === 0) continue
 
-        // 4. Mapeia os episódios a marcar
         const idsParaMarcar = []
 
         for (const epCsv of listaEpisodios) {
@@ -216,7 +171,6 @@ export default function Configuracoes() {
           await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
         }
 
-        // 5. Atualiza o status em user_item com a FK interna
         const totalEpisodiosSerie = episodiosBanco.length
         
         const { count: assistidosCount } = await supabase
@@ -229,7 +183,7 @@ export default function Configuracoes() {
           const status = assistidosCount >= totalEpisodiosSerie ? 'visto' : 'vendo'
           await supabase.from('user_item').upsert({
             user_id: user.id,
-            titulo_id: tituloIdInterno,
+            titulo_id: tmdbIdNum,
             status,
           }, { onConflict: 'user_id,titulo_id' })
         }
@@ -248,6 +202,7 @@ export default function Configuracoes() {
       setImportando(false)
     }
   }
+
   async function sairDaConta() {
     try {
       await supabase.auth.signOut()
