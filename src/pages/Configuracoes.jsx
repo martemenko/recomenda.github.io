@@ -4,6 +4,7 @@ import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 
 export default function Configuracoes() {
+  const navigate = useNavigate()
   const [perfilPrivado, setPerfilPrivado] = useState(false)
   const [csvFile, setCsvFile] = useState(null)
   const [csvHeaders, setCsvHeaders] = useState([])
@@ -55,7 +56,7 @@ export default function Configuracoes() {
       setCsvHeaders(headers)
       setCsvLinhas(linhas)
 
-      // Auto-detecção inteligente de colunas (compatível com TV Time, Trakt, IMDB, etc)
+      // Auto-detecção inteligente de colunas
       const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
       headers.forEach((h, i) => {
         const l = h.toLowerCase().trim()
@@ -94,7 +95,6 @@ export default function Configuracoes() {
       const idxEp = parseInt(mapeamento.episodio, 10)
       const idxAssistido = mapeamento.assistido !== '' ? parseInt(mapeamento.assistido, 10) : -1
 
-      // 1. Agrupar episódios por série para otimizar chamadas e evitar inconsistências
       const seriesMap = new Map()
 
       for (const linha of csvLinhas) {
@@ -119,14 +119,12 @@ export default function Configuracoes() {
       let processados = 0
       const totalSeries = seriesMap.size
 
-      // 2. Processar série por série
       for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
         processados++
         const pct = Math.round((processados / totalSeries) * 100)
         setPorcentagemProgresso(pct)
         setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
 
-        // Buscar título no TMDB via Edge Function
         const { data: buscaData } = await supabase.functions.invoke('buscar-titulo', {
           body: { query: nomeSerie },
         })
@@ -136,12 +134,10 @@ export default function Configuracoes() {
 
         const tmdbIdNum = Number(melhor.tmdb_id)
 
-        // Assegurar que a série e seus episódios existam na base local
         await supabase.functions.invoke('adicionar-titulo', {
           body: { tmdb_id: tmdbIdNum, tipo: melhor.tipo || 'tv' },
         })
 
-        // Buscar os episódios cadastrados no banco local
         const { data: episodiosBanco } = await supabase
           .from('episode')
           .select('id, season_number, episode_number')
@@ -161,7 +157,6 @@ export default function Configuracoes() {
           }
         }
 
-        // Registrar episódios assistidos em lote
         if (idsParaMarcar.length > 0) {
           const payload = idsParaMarcar.map((epId) => ({
             user_id: user.id,
@@ -171,7 +166,6 @@ export default function Configuracoes() {
           await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
         }
 
-        // Atualizar status no user_item
         const totalEpisodiosSerie = episodiosBanco.length
         
         const { count: assistidosCount } = await supabase
@@ -204,6 +198,15 @@ export default function Configuracoes() {
     }
   }
 
+  async function sairDaConta() {
+    try {
+      await supabase.auth.signOut()
+      navigate('/login')
+    } catch (err) {
+      alert(`Erro ao sair: ${err.message}`)
+    }
+  }
+
   async function excluirConta() {
     if (confirmacaoExclusao !== 'EXCLUIR') {
       alert('Digite EXCLUIR para confirmar.')
@@ -224,7 +227,8 @@ export default function Configuracoes() {
 
   return (
     <div className="flex-1 pb-10">
-      <TopBar title="Configurações" />
+      {/* TopBar com função de voltar para o perfil */}
+      <TopBar title="Configurações" onBack={() => navigate('/perfil')} />
 
       <SectionLabel>Privacidade</SectionLabel>
       <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
@@ -337,25 +341,40 @@ export default function Configuracoes() {
         )}
       </div>
 
-      <SectionLabel>Conta</SectionLabel>
-      <div className="mx-4 p-4 bg-surface rounded-2xl border border-red-500/20 space-y-3">
-        <div className="text-xs text-muted">
-          Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
+      <SectionLabel>Sessão e Conta</SectionLabel>
+      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
+        {/* Botão de Sair da Conta */}
+        <div>
+          <button
+            onClick={sairDaConta}
+            className="w-full py-3 bg-surface2 hover:bg-white/10 text-ink border border-white/10 font-display font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+          >
+            <span>Sair da Conta (Log out)</span>
+          </button>
         </div>
-        <input
-          type="text"
-          value={confirmacaoExclusao}
-          onChange={(e) => setConfirmacaoExclusao(e.target.value)}
-          placeholder="Digite EXCLUIR"
-          className="w-full bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
-        />
-        <button
-          onClick={excluirConta}
-          disabled={confirmacaoExclusao !== 'EXCLUIR'}
-          className="w-full py-2.5 bg-red-500/10 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-xs transition-colors hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-red-500/10"
-        >
-          Excluir Conta Definitivamente
-        </button>
+
+        <hr className="border-white/5" />
+
+        {/* Exclusão Definitiva */}
+        <div className="space-y-3 pt-1">
+          <div className="text-xs text-muted">
+            Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
+          </div>
+          <input
+            type="text"
+            value={confirmacaoExclusao}
+            onChange={(e) => setConfirmacaoExclusao(e.target.value)}
+            placeholder="Digite EXCLUIR"
+            className="w-full bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
+          />
+          <button
+            onClick={excluirConta}
+            disabled={confirmacaoExclusao !== 'EXCLUIR'}
+            className="w-full py-2.5 bg-red-500/10 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-xs transition-colors hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-red-500/10"
+          >
+            Excluir Conta Definitivamente
+          </button>
+        </div>
       </div>
     </div>
   )
