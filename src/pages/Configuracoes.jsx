@@ -128,18 +128,20 @@ export default function Configuracoes() {
         setPorcentagemProgresso(pct)
         setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
 
-        const { data: buscaData } = await supabase.functions.invoke('buscar-titulo', {
+        const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
           body: { query: nomeSerie },
         })
+        if (erroBusca) { console.error(`Erro ao buscar "${nomeSerie}":`, erroBusca); continue }
 
-        const melhor = buscaData?.resultados?.[0] || buscaData?.[0]
+        const melhor = buscaData?.results?.[0]
         if (!melhor || !melhor.tmdb_id) continue
 
         const tmdbIdNum = Number(melhor.tmdb_id)
 
-        await supabase.functions.invoke('adicionar-titulo', {
-          body: { tmdb_id: tmdbIdNum, tipo: melhor.tipo || 'tv' },
+        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+          body: { tmdb_id: tmdbIdNum, media_type: melhor.media_type || 'tv' },
         })
+        if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
 
         const { data: episodiosBanco } = await supabase
           .from('episode')
