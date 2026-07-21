@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../supabase' // Ajustado o caminho de importação do cliente Supabase
+import { supabase } from '../lib/supabase' // Caminho corrigido para src/lib/supabase
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 
