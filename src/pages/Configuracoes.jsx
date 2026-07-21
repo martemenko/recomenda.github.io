@@ -230,8 +230,15 @@ export default function Configuracoes() {
 
   return (
     <div className="flex-1 pb-10">
-      {/* TopBar com função de voltar para o perfil */}
-      <TopBar title="Configurações" onBack={() => navigate('/perfil')} />
+      {/* TopBar não tem prop "onBack" - o botão de voltar precisa ir pelo rightSlot */}
+      <TopBar
+        title="Configurações"
+        rightSlot={
+          <button onClick={() => navigate('/perfil')} className="text-muted">
+            <ArrowLeft size={20} />
+          </button>
+        }
+      />
       <SectionLabel>Privacidade</SectionLabel>
       <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
         <div>
