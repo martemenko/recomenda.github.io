@@ -12,7 +12,7 @@ export default function Configuracoes() {
   const [csvFile, setCsvFile] = useState(null)
   const [csvHeaders, setCsvHeaders] = useState([])
   const [csvLinhas, setCsvLinhas] = useState([])
-  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '' })
+  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '', id: '' })
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
@@ -60,13 +60,20 @@ export default function Configuracoes() {
       setCsvLinhas(linhas)
 
       // Auto-detecção inteligente de colunas
-      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1 }
+      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1, id: -1 }
       headers.forEach((h, i) => {
         const l = h.toLowerCase().trim()
-        if (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) guess.titulo = i
+        // series_tvdb_id contém "series", por isso o guess de título exclui colunas de id explicitamente
+        if (
+          (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) &&
+          !l.includes('tvdb') && !l.includes('tmdb') && !l.includes('imdb') && !l.includes('uuid') && !l.includes('_id')
+        ) guess.titulo = i
         if (l === 'season' || l.includes('temporada')) guess.temporada = i
-        if (l === 'episode' || l.includes('episodio') || l.includes('episódio')) guess.episodio = i
+        if (l === 'episode' && !l.includes('tvdb') && !l.includes('tmdb')) guess.episodio = i
+        if (l.includes('episodio') || l.includes('episódio')) guess.episodio = i
         if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
+        // Id da série (TVDB ou TMDB, tanto faz - o import tenta os dois) - nunca o id do episódio
+        if ((l.includes('series_tvdb') || l.includes('series_tmdb') || l === 'tvdbid' || l === 'tmdbid') && !l.includes('episode')) guess.id = i
       })
 
       setMapeamento({
@@ -74,6 +81,7 @@ export default function Configuracoes() {
         temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
         episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
         assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
+        id: guess.id >= 0 ? String(guess.id) : '',
       })
     }
     reader.readAsText(file)
@@ -97,6 +105,7 @@ export default function Configuracoes() {
       const idxTemp = parseInt(mapeamento.temporada, 10)
       const idxEp = parseInt(mapeamento.episodio, 10)
       const idxAssistido = mapeamento.assistido !== '' ? parseInt(mapeamento.assistido, 10) : -1
+      const idxId = mapeamento.id !== '' ? parseInt(mapeamento.id, 10) : -1
 
       const seriesMap = new Map()
 
@@ -113,35 +122,66 @@ export default function Configuracoes() {
           assistido = val === 'true' || val === '1' || val === 'yes' || val === 'visto' || val === 'assistido'
         }
 
-        if (!seriesMap.has(nomeSerie)) {
-          seriesMap.set(nomeSerie, [])
+        const idValor = idxId >= 0 ? linha[idxId] : null
+        const chave = idValor || nomeSerie
+
+        if (!seriesMap.has(chave)) {
+          seriesMap.set(chave, { nomeSerie, idValor, episodios: [] })
         }
-        seriesMap.get(nomeSerie).push({ temporada: temporadaNum, episodio: episodioNum, assistido })
+        seriesMap.get(chave).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido })
       }
 
       let processados = 0
       const totalSeries = seriesMap.size
 
-      for (const [nomeSerie, listaEpisodios] of seriesMap.entries()) {
+      for (const [, grupo] of seriesMap.entries()) {
+        const { nomeSerie, idValor, episodios: listaEpisodios } = grupo
         processados++
-        const pct = Math.round((processados / totalSeries) * 100)
-        setPorcentagemProgresso(pct)
-        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
+        setPorcentagemProgresso(Math.round((processados / totalSeries) * 100))
+        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`) // sempre o nome, nunca o id
 
-        const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
-          body: { query: nomeSerie },
-        })
-        if (erroBusca) { console.error(`Erro ao buscar "${nomeSerie}":`, erroBusca); continue }
+        let tmdbIdNum = null
+        let jaIngerido = false
 
-        const melhor = buscaData?.results?.[0]
-        if (!melhor || !melhor.tmdb_id) continue
+        if (idValor) {
+          // 1º teste: trata o id como TMDB direto - mais eficiente, ingere na mesma chamada
+          const { error: erroTesteTmdb } = await supabase.functions.invoke('adicionar-titulo', {
+            body: { tmdb_id: Number(idValor), media_type: 'tv' },
+          })
+          if (!erroTesteTmdb) {
+            tmdbIdNum = Number(idValor)
+            jaIngerido = true
+          } else {
+            // Não é um tmdb_id válido - tenta o mesmo valor como tvdb_id via /find
+            const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
+              body: { tvdb_id: idValor },
+            })
+            if (erroTvdb) console.error(`Erro ao resolver id "${idValor}" de "${nomeSerie}" via TVDB:`, erroTvdb)
+            if (tvdbData?.resultado?.tmdb_id) {
+              tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+            }
+          }
+        }
 
-        const tmdbIdNum = Number(melhor.tmdb_id)
+        let mediaType = 'tv'
+        if (!tmdbIdNum) {
+          // Nem id mapeado, nem achou por ele - cai pra busca por nome
+          const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
+            body: { query: nomeSerie },
+          })
+          if (erroBusca) { console.error(`Erro ao buscar "${nomeSerie}":`, erroBusca); continue }
+          const melhor = buscaData?.results?.[0]
+          if (!melhor?.tmdb_id) continue
+          tmdbIdNum = Number(melhor.tmdb_id)
+          mediaType = melhor.media_type || 'tv'
+        }
 
-        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
-          body: { tmdb_id: tmdbIdNum, media_type: melhor.media_type || 'tv' },
-        })
-        if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
+        if (!jaIngerido) {
+          const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+            body: { tmdb_id: tmdbIdNum, media_type: mediaType },
+          })
+          if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
+        }
 
         const { data: episodiosBanco } = await supabase
           .from('episode')
@@ -319,6 +359,20 @@ export default function Configuracoes() {
                   className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
                 >
                   <option value="">Todos Assistidos</option>
+                  {csvHeaders.map((h, i) => (
+                    <option key={i} value={i}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-muted block mb-1">ID (TVDB ou TMDB, opcional)</label>
+                <select
+                  value={mapeamento.id}
+                  onChange={(e) => setMapeamento({ ...mapeamento, id: e.target.value })}
+                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
+                >
+                  <option value="">Nenhum (busca por nome)</option>
                   {csvHeaders.map((h, i) => (
                     <option key={i} value={i}>{h}</option>
                   ))}
