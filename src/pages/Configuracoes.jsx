@@ -87,7 +87,14 @@ export default function Configuracoes() {
 
       setProgresso('Descompactando arquivo ZIP...')
       const zip = await JSZip.loadAsync(zipFile)
-      const files = Object.keys(zip.files)
+      
+      // Filtrar arquivos ignorando pastas do macOS ou arquivos de metadados
+      const files = Object.keys(zip.files).filter(name => 
+        !name.includes('__MACOSX') && 
+        !name.split('/').pop().startsWith('._')
+      )
+
+      console.log('Arquivos encontrados no ZIP:', files)
 
       // 1. Procurar e processar o arquivo de séries para mapear nome da série por tvdb_id
       const seriesFileKey = files.find(name => 
@@ -95,9 +102,12 @@ export default function Configuracoes() {
       )
       
       const seriesNamesMap = new Map()
+      const seriesMap = new Map()
+
       if (seriesFileKey) {
         const isJson = seriesFileKey.endsWith('.json')
-        const seriesContent = await zip.files[seriesFileKey].async('string')
+        // Remove BOM UTF-8 se existir
+        const seriesContent = (await zip.files[seriesFileKey].async('string')).replace(/^\uFEFF/, '')
         
         if (isJson) {
           try {
@@ -109,6 +119,30 @@ export default function Configuracoes() {
                 if (tvdbId && title) {
                   seriesNamesMap.set(String(tvdbId).trim(), String(title).trim())
                 }
+                
+                // Se o JSON de séries já contiver o aninhamento de temporadas e episódios (padrão de alguns exports JSON)
+                if (Array.isArray(s.seasons)) {
+                  for (const season of s.seasons) {
+                    const sNum = parseInt(season.season, 10)
+                    if (isNaN(sNum) || !Array.isArray(season.episodes)) continue
+                    for (const ep of season.episodes) {
+                      const isWatchedVal = ep.is_watched !== undefined ? ep.is_watched : ep.isWatched
+                      const isWatched = isWatchedVal === true || isWatchedVal === 1 || String(isWatchedVal).toLowerCase() === 'true'
+                      if (!isWatched) continue
+
+                      const epNum = parseInt(ep.episode, 10)
+                      if (isNaN(epNum)) continue
+
+                      const tvdbIdStr = String(tvdbId).trim()
+                      const nomeSerie = String(title || `Série (ID: ${tvdbIdStr})`).trim()
+
+                      if (!seriesMap.has(tvdbIdStr)) {
+                        seriesMap.set(tvdbIdStr, { tvdbId: tvdbIdStr, nomeSerie, episodios: [] })
+                      }
+                      seriesMap.get(tvdbIdStr).episodios.push({ temporada: sNum, episodio: epNum, assistido: true })
+                    }
+                  }
+                }
               }
             }
           } catch (e) {
@@ -117,9 +151,9 @@ export default function Configuracoes() {
         } else {
           const seriesRows = parseCSV(seriesContent)
           if (seriesRows.length > 1) {
-            const headers = seriesRows[0]
-            const idIdx = headers.findIndex(h => h.toLowerCase().trim() === 'tvdb_id')
-            const titleIdx = headers.findIndex(h => h.toLowerCase().trim() === 'title')
+            const headers = seriesRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase())
+            const idIdx = headers.findIndex(h => h === 'tvdb_id')
+            const titleIdx = headers.findIndex(h => h === 'title')
             if (idIdx >= 0 && titleIdx >= 0) {
               for (let i = 1; i < seriesRows.length; i++) {
                 const row = seriesRows[i]
@@ -132,94 +166,95 @@ export default function Configuracoes() {
         }
       }
 
-      // 2. Procurar e processar o arquivo de episódios
+      // 2. Procurar e processar o arquivo de episódios (caso os dados não estejam aninhados no JSON acima)
       const episodesFileKey = files.find(name => name.includes('tvtime-series-episodes'))
 
-      if (!episodesFileKey) {
-        throw new Error('Arquivo de episódios (tvtime-series-episodes) não encontrado no ZIP.')
+      if (episodesFileKey) {
+        setProgresso('Lendo arquivo de episódios...')
+        const epContent = (await zip.files[episodesFileKey].async('string')).replace(/^\uFEFF/, '')
+        const isEpJson = episodesFileKey.endsWith('.json')
+
+        if (isEpJson) {
+          try {
+            const epList = JSON.parse(epContent)
+            if (Array.isArray(epList)) {
+              for (const ep of epList) {
+                const isWatchedVal = ep.is_watched !== undefined ? ep.is_watched : ep.isWatched
+                const isWatched = isWatchedVal === true || isWatchedVal === 1 || String(isWatchedVal).toLowerCase() === 'true'
+                if (!isWatched) continue
+
+                const tvdbId = ep.series_tvdb_id || ep.seriesTvdbId
+                const temporadaNum = parseInt(ep.season, 10)
+                const episodioNum = parseInt(ep.episode, 10)
+
+                if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+
+                const sTvdbIdStr = String(tvdbId).trim()
+                const nomeSerie = seriesNamesMap.get(sTvdbIdStr) || `Série (ID: ${sTvdbIdStr})`
+
+                if (!seriesMap.has(sTvdbIdStr)) {
+                  seriesMap.set(sTvdbIdStr, { tvdbId: sTvdbIdStr, nomeSerie, episodios: [] })
+                }
+                seriesMap.get(sTvdbIdStr).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
+              }
+            }
+          } catch (e) {
+            throw new Error('Erro ao processar JSON de episódios: ' + e.message)
+          }
+        } else {
+          const epRows = parseCSV(epContent)
+          if (epRows.length < 2) {
+            throw new Error('O arquivo CSV de episódios está vazio ou inválido.')
+          }
+
+          const headers = epRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase())
+          const sIdIdx = headers.findIndex(h => h === 'series_tvdb_id')
+          const seasonIdx = headers.findIndex(h => h === 'season')
+          const episodeIdx = headers.findIndex(h => h === 'episode')
+          const isWatchedIdx = headers.findIndex(h => h === 'is_watched')
+
+          if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
+            throw new Error('As colunas obrigatórias do TV Time (series_tvdb_id, season, episode) não foram identificadas no CSV.')
+          }
+
+          for (let i = 1; i < epRows.length; i++) {
+            const row = epRows[i]
+            
+            let isWatched = true
+            if (isWatchedIdx >= 0) {
+              const val = String(row[isWatchedIdx] ?? '').toLowerCase().trim()
+              isWatched = val === 'true' || val === '1' || val === 'yes'
+            }
+            if (!isWatched) continue
+
+            const tvdbId = row[sIdIdx]?.trim()
+            const temporadaNum = parseInt(row[seasonIdx], 10)
+            const episodioNum = parseInt(row[episodeIdx], 10)
+
+            if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+
+            const nomeSerie = seriesNamesMap.get(tvdbId) || `Série (ID: ${tvdbId})`
+
+            if (!seriesMap.has(tvdbId)) {
+              seriesMap.set(tvdbId, { tvdbId, nomeSerie, episodios: [] })
+            }
+            seriesMap.get(tvdbId).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
+          }
+        }
       }
 
-      setProgresso('Lendo arquivo de episódios...')
-      const epContent = await zip.files[episodesFileKey].async('string')
-      const isEpJson = episodesFileKey.endsWith('.json')
-      const seriesMap = new Map()
-
-      if (isEpJson) {
-        try {
-          const epList = JSON.parse(epContent)
-          if (Array.isArray(epList)) {
-            for (const ep of epList) {
-              const isWatchedVal = ep.is_watched !== undefined ? ep.is_watched : ep.isWatched
-              const isWatched = isWatchedVal === true || isWatchedVal === 1 || String(isWatchedVal).toLowerCase() === 'true'
-              if (!isWatched) continue
-
-              const tvdbId = ep.series_tvdb_id || ep.seriesTvdbId
-              const temporadaNum = parseInt(ep.season, 10)
-              const episodioNum = parseInt(ep.episode, 10)
-
-              if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
-
-              const sTvdbIdStr = String(tvdbId).trim()
-              const nomeSerie = seriesNamesMap.get(sTvdbIdStr) || `Série (ID: ${sTvdbIdStr})`
-
-              if (!seriesMap.has(sTvdbIdStr)) {
-                seriesMap.set(sTvdbIdStr, { tvdbId: sTvdbIdStr, nomeSerie, episodios: [] })
-              }
-              seriesMap.get(sTvdbIdStr).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
-            }
-          }
-        } catch (e) {
-          throw new Error('Erro ao processar JSON de episódios: ' + e.message)
-        }
-      } else {
-        const epRows = parseCSV(epContent)
-        if (epRows.length < 2) {
-          throw new Error('O arquivo CSV de episódios está vazio ou inválido.')
-        }
-
-        const headers = epRows[0]
-        const sIdIdx = headers.findIndex(h => h.toLowerCase().trim() === 'series_tvdb_id')
-        const seasonIdx = headers.findIndex(h => h.toLowerCase().trim() === 'season')
-        const episodeIdx = headers.findIndex(h => h.toLowerCase().trim() === 'episode')
-        const isWatchedIdx = headers.findIndex(h => h.toLowerCase().trim() === 'is_watched')
-
-        if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
-          throw new Error('Colunas obrigatórias do TV Time (series_tvdb_id, season, episode) não identificadas no CSV.')
-        }
-
-        for (let i = 1; i < epRows.length; i++) {
-          const row = epRows[i]
-          
-          let isWatched = true
-          if (isWatchedIdx >= 0) {
-            const val = String(row[isWatchedIdx] ?? '').toLowerCase().trim()
-            isWatched = val === 'true' || val === '1' || val === 'yes'
-          }
-          if (!isWatched) continue
-
-          const tvdbId = row[sIdIdx]?.trim()
-          const temporadaNum = parseInt(row[seasonIdx], 10)
-          const episodioNum = parseInt(row[episodeIdx], 10)
-
-          if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
-
-          const nomeSerie = seriesNamesMap.get(tvdbId) || `Série (ID: ${tvdbId})`
-
-          if (!seriesMap.has(tvdbId)) {
-            seriesMap.set(tvdbId, { tvdbId, nomeSerie, episodios: [] })
-          }
-          seriesMap.get(tvdbId).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
-        }
+      const totalSeries = seriesMap.size
+      if (totalSeries === 0) {
+        throw new Error('Nenhum episódio com status assistido/visto foi identificado nos arquivos do ZIP.')
       }
 
       let processados = 0
-      const totalSeries = seriesMap.size
 
       for (const [tvdbId, grupo] of seriesMap.entries()) {
         const { nomeSerie, episodios: listaEpisodios } = grupo
         processados++
         setPorcentagemProgresso(Math.round((processados / totalSeries) * 100))
-        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
+        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}" (${listaEpisodios.length} episódios)...`)
 
         let tmdbIdNum = null
 
