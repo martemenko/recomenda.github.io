@@ -267,18 +267,18 @@ export default function Configuracoes() {
 
         // 1. Tenta buscar o ID de/para usando o endpoint TVDB -> TMDB
         try {
-          const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
+          const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('tvdb-search', {
             body: { tvdb_id: tvdbId },
           })
 
           if (erroTvdb) {
-            console.error(`[Importador] Erro no 'buscar-por-tvdb' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
+            console.error(`[Importador] Erro no 'tvdb-search' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
           } else if (tvdbData?.resultado?.tmdb_id) {
             tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
             console.log(`[Importador] ID TVDB ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
           }
         } catch (e) {
-          console.error(`[Importador] Exceção ao chamar 'buscar-por-tvdb' para "${nomeSerie}":`, e)
+          console.error(`[Importador] Exceção ao chamar 'tvdb-search' para "${nomeSerie}":`, e)
         }
 
         // 2. Fallback de alta disponibilidade: Se o de/para direto falhar (por CORS ou ID inexistente), buscamos pelo nome da série
