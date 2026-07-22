@@ -105,7 +105,6 @@ export default function Configuracoes() {
       const seriesMap = new Map()
 
       if (seriesFileKey) {
-        // Remove BOM UTF-8 se existir
         const seriesContent = (await zip.files[seriesFileKey].async('string')).replace(/^\uFEFF/, '')
         const isJson = seriesFileKey.endsWith('.json') || seriesContent.trim().startsWith('[') || seriesContent.trim().startsWith('{')
         
@@ -120,7 +119,7 @@ export default function Configuracoes() {
                   seriesNamesMap.set(String(tvdbId).trim(), String(title).trim())
                 }
                 
-                // Se o JSON de séries já contiver o aninhamento de temporadas e episódios (padrão de alguns exports JSON)
+                // Se o JSON de séries já contiver o aninhamento de temporadas e episódios
                 if (Array.isArray(s.seasons)) {
                   for (const season of s.seasons) {
                     const sNum = parseInt(season.season, 10)
@@ -171,7 +170,7 @@ export default function Configuracoes() {
 
       console.log(`[Importador] Mapeamento de nomes de séries carregado: ${seriesNamesMap.size} títulos.`)
 
-      // 2. Procurar e processar o arquivo de episódios (caso os dados não estejam aninhados no JSON acima)
+      // 2. Procurar e processar o arquivo de episódios de séries
       const episodesFileKey = files.find(name => name.includes('tvtime-series-episodes'))
 
       if (episodesFileKey) {
@@ -248,43 +247,111 @@ export default function Configuracoes() {
         }
       }
 
+      // 3. Procurar e processar o arquivo de filmes (tvtime-movies-)
+      const moviesFileKey = files.find(name => name.includes('tvtime-movies-'))
+      const moviesList = []
+
+      if (moviesFileKey) {
+        setProgresso('Lendo arquivo de filmes...')
+        const moviesContent = (await zip.files[moviesFileKey].async('string')).replace(/^\uFEFF/, '')
+        const isMoviesJson = moviesFileKey.endsWith('.json') || moviesContent.trim().startsWith('[') || moviesContent.trim().startsWith('{')
+
+        if (isMoviesJson) {
+          try {
+            const parsedMovies = JSON.parse(moviesContent)
+            if (Array.isArray(parsedMovies)) {
+              for (const m of parsedMovies) {
+                const isWatchedVal = m.is_watched !== undefined ? m.is_watched : m.isWatched
+                const isWatched = isWatchedVal === true || isWatchedVal === 1 || String(isWatchedVal).toLowerCase() === 'true'
+                if (!isWatched) continue
+
+                const tvdbId = m.tvdb_id || m.tvdbId
+                const title = m.title || m.name
+                if (tvdbId) {
+                  moviesList.push({
+                    tvdbId: String(tvdbId).trim(),
+                    nome: String(title || `Filme (ID: ${tvdbId})`).trim()
+                  })
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[Importador] Erro ao processar JSON de filmes:', e)
+          }
+        } else {
+          const movieRows = parseCSV(moviesContent)
+          if (movieRows.length > 1) {
+            const headers = movieRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
+            const idIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
+            const titleIdx = headers.findIndex(h => h === 'title' || h === 'name' || h.includes('titulo') || h.includes('título'))
+            const isWatchedIdx = headers.findIndex(h => h === 'is_watched' || h.includes('watched'))
+
+            if (idIdx >= 0 && titleIdx >= 0) {
+              for (let i = 1; i < movieRows.length; i++) {
+                const row = movieRows[i]
+                
+                let isWatched = true
+                if (isWatchedIdx >= 0) {
+                  const val = String(row[isWatchedIdx] ?? '').toLowerCase().trim()
+                  isWatched = val === 'true' || val === '1' || val === 'yes'
+                }
+                if (!isWatched) continue
+
+                const tvdbIdVal = row[idIdx]?.replace(/^["']|["']$/g, '').trim()
+                const titleVal = row[titleIdx]?.replace(/^["']|["']$/g, '').trim()
+                if (tvdbIdVal) {
+                  moviesList.push({
+                    tvdbId: tvdbIdVal,
+                    nome: titleVal || `Filme (ID: ${tvdbIdVal})`
+                  })
+                }
+              }
+            }
+          }
+        }
+      }
+
       const totalSeries = seriesMap.size
-      if (totalSeries === 0) {
-        throw new Error('Nenhum episódio com status assistido/visto foi identificado nos arquivos do ZIP.')
+      const totalFilmes = moviesList.length
+      const totalGeral = totalSeries + totalFilmes
+
+      if (totalGeral === 0) {
+        throw new Error('Nenhum episódio ou filme marcado como assistido foi identificado nos arquivos do ZIP.')
       }
 
       let processados = 0
 
+      // --- Loop 1: Processamento de Séries ---
       for (const [tvdbId, grupo] of seriesMap.entries()) {
         const { nomeSerie, episodios: listaEpisodios } = grupo
         processados++
-        setPorcentagemProgresso(Math.round((processados / totalSeries) * 100))
-        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}" (${listaEpisodios.length} episódios)...`)
+        setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
+        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeSerie}" (Série)...`)
 
         console.log(`[Importador] Processando "${nomeSerie}" (TVDB: ${tvdbId}) com ${listaEpisodios.length} episódios.`);
 
         let tmdbIdNum = null
 
-        // 1. Tenta buscar o ID de/para usando o endpoint TVDB -> TMDB
+        // 1. Tenta buscar o ID de/para usando o endpoint correto 'tvdb-search'
         try {
           const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('tvdb-search', {
             body: { tvdb_id: tvdbId },
           })
 
           if (erroTvdb) {
-            console.error(`[Importador] Erro no 'tvdb-search' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
+            console.error(`[Importador] Erro na função 'tvdb-search' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
           } else if (tvdbData?.resultado?.tmdb_id) {
             tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
             console.log(`[Importador] ID TVDB ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
           }
         } catch (e) {
-          console.error(`[Importador] Exceção ao chamar 'tvdb-search' para "${nomeSerie}":`, e)
+          console.error(`[Importador] Erro de rede/CORS na rota de ID para "${nomeSerie}":`, e)
         }
 
-        // 2. Fallback de alta disponibilidade: Se o de/para direto falhar (por CORS ou ID inexistente), buscamos pelo nome da série
+        // 2. Fallback por Nome se a função de de/para falhou (por CORS ou ID não mapeado)
         if (!tmdbIdNum && nomeSerie && !nomeSerie.startsWith('Série (ID:')) {
           try {
-            console.log(`[Importador] Fallback: Buscando por nome no TMDB para "${nomeSerie}"...`)
+            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para "${nomeSerie}"...`)
             const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
               body: { query: nomeSerie },
             })
@@ -295,7 +362,7 @@ export default function Configuracoes() {
               const melhor = buscaData?.results?.[0]
               if (melhor?.tmdb_id) {
                 tmdbIdNum = Number(melhor.tmdb_id)
-                console.log(`[Importador] Fallback com sucesso para "${nomeSerie}". TMDB ID: ${tmdbIdNum}`)
+                console.log(`[Importador] Recuperado com sucesso via nome para "${nomeSerie}". TMDB ID: ${tmdbIdNum}`)
               } else {
                 console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa por nome: "${nomeSerie}"`)
               }
@@ -387,6 +454,85 @@ export default function Configuracoes() {
           if (erroUpsertUserItem) {
             console.error(`[Importador] Erro ao atualizar status de "${nomeSerie}" em user_item:`, erroUpsertUserItem)
           }
+        }
+      }
+
+      // --- Loop 2: Processamento de Filmes ---
+      for (const movie of moviesList) {
+        const { tvdbId, nome: nomeFilme } = movie
+        processados++
+        setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
+        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeFilme}" (Filme)...`)
+
+        console.log(`[Importador] Processando filme "${nomeFilme}" (TVDB: ${tvdbId}).`);
+
+        let tmdbIdNum = null
+
+        // 1. Resolve o ID usando 'tvdb-search'
+        try {
+          const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('tvdb-search', {
+            body: { tvdb_id: tvdbId },
+          })
+
+          if (erroTvdb) {
+            console.error(`[Importador] Erro na função 'tvdb-search' para o filme "${nomeFilme}" (TVDB: ${tvdbId}):`, erroTvdb)
+          } else if (tvdbData?.resultado?.tmdb_id) {
+            tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+            console.log(`[Importador] Filme TVDB ID ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
+          }
+        } catch (e) {
+          console.error(`[Importador] Erro de rede/CORS na rota de ID para o filme "${nomeFilme}":`, e)
+        }
+
+        // 2. Fallback de alta disponibilidade por nome para filme
+        if (!tmdbIdNum && nomeFilme && !nomeFilme.startsWith('Filme (ID:')) {
+          try {
+            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para o filme "${nomeFilme}"...`)
+            const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
+              body: { query: nomeFilme },
+            })
+
+            if (erroBusca) {
+              console.error(`[Importador] Erro ao buscar por nome "${nomeFilme}":`, erroBusca)
+            } else {
+              const melhor = buscaData?.results?.find(r => r.media_type === 'movie') || buscaData?.results?.[0]
+              if (melhor?.tmdb_id) {
+                tmdbIdNum = Number(melhor.tmdb_id)
+                console.log(`[Importador] Recuperado com sucesso via nome para o filme "${nomeFilme}". TMDB ID: ${tmdbIdNum}`)
+              } else {
+                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa de filme por nome: "${nomeFilme}"`)
+              }
+            }
+          } catch (e) {
+            console.error(`[Importador] Exceção no fallback de filme para "${nomeFilme}":`, e)
+          }
+        }
+
+        if (!tmdbIdNum) {
+          console.warn(`[Importador] TMDB ID não encontrado para o filme "${nomeFilme}" (TVDB: ${tvdbId}). Pulando filme.`)
+          continue
+        }
+
+        console.log(`[Importador] Resolvido para TMDB ID: ${tmdbIdNum}. Chamando 'adicionar-titulo' para filme...`);
+
+        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+          body: { tmdb_id: tmdbIdNum, media_type: 'movie' },
+        })
+        if (erroAdd) { 
+          console.error(`[Importador] Erro ao adicionar o filme "${nomeFilme}" (TMDB: ${tmdbIdNum}):`, erroAdd)
+          continue 
+        }
+
+        // Para filmes, atualiza diretamente como "visto" na tabela 'user_item'
+        console.log(`[Importador] Atualizando status de visualização do filme "${nomeFilme}" para "visto"...`);
+        const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
+          user_id: user.id,
+          titulo_id: tmdbIdNum,
+          status: 'visto',
+        }, { onConflict: 'user_id,titulo_id' })
+
+        if (erroUpsertUserItem) {
+          console.error(`[Importador] Erro ao atualizar status de "${nomeFilme}" em user_item:`, erroUpsertUserItem)
         }
       }
 
