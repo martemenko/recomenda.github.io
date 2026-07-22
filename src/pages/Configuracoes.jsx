@@ -45,7 +45,17 @@ export default function Configuracoes() {
       const resultado = []
       let dentroDeAspas = false
       let campoAtual = ''
-      for (let i = 0; i < linha.length; i++) {
+      for (let i = 0; i < inlineChar => {
+        const char = linha[i]
+        if (char === '"') {
+          dentroDeAspas = !dentroDeAspas
+        } else if (char === ',' && !dentroDeAspas) {
+          resultado.push(campoAtual.trim().replace(/^"|"$/g, ''))
+          campoAtual = ''
+        } else {
+          campoAtual += char
+        }
+      }; i < linha.length; i++) {
         const char = linha[i]
         if (char === '"') {
           dentroDeAspas = !dentroDeAspas
@@ -94,7 +104,7 @@ export default function Configuracoes() {
         !name.split('/').pop().startsWith('._')
       )
 
-      console.log('Arquivos encontrados no ZIP:', files)
+      console.log('[Importador] Arquivos válidos encontrados no ZIP:', files)
 
       // 1. Procurar e processar o arquivo de séries para mapear nome da série por tvdb_id
       const seriesFileKey = files.find(name => 
@@ -105,9 +115,9 @@ export default function Configuracoes() {
       const seriesMap = new Map()
 
       if (seriesFileKey) {
-        const isJson = seriesFileKey.endsWith('.json')
         // Remove BOM UTF-8 se existir
         const seriesContent = (await zip.files[seriesFileKey].async('string')).replace(/^\uFEFF/, '')
+        const isJson = seriesFileKey.endsWith('.json') || seriesContent.trim().startsWith('[') || seriesContent.trim().startsWith('{')
         
         if (isJson) {
           try {
@@ -146,7 +156,7 @@ export default function Configuracoes() {
               }
             }
           } catch (e) {
-            console.error('Erro ao processar JSON de séries:', e)
+            console.error('[Importador] Erro ao processar JSON de séries:', e)
           }
         } else {
           const seriesRows = parseCSV(seriesContent)
@@ -172,7 +182,7 @@ export default function Configuracoes() {
       if (episodesFileKey) {
         setProgresso('Lendo arquivo de episódios...')
         const epContent = (await zip.files[episodesFileKey].async('string')).replace(/^\uFEFF/, '')
-        const isEpJson = episodesFileKey.endsWith('.json')
+        const isEpJson = episodesFileKey.endsWith('.json') || epContent.trim().startsWith('[') || epContent.trim().startsWith('{')
 
         if (isEpJson) {
           try {
@@ -256,15 +266,17 @@ export default function Configuracoes() {
         setPorcentagemProgresso(Math.round((processados / totalSeries) * 100))
         setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}" (${listaEpisodios.length} episódios)...`)
 
+        console.log(`[Importador] Processando "${nomeSerie}" (TVDB: ${tvdbId}) com ${listaEpisodios.length} episódios.`);
+
         let tmdbIdNum = null
 
-        // Busca o ID direto no endpoint do TVDB para TMDB (buscar-por-tvdb)
+        // Busca o ID direto no endpoint do TVDB para TMDB (buscar-por-tvdb). Mantendo formato de string bruto do original.
         const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
-          body: { tvdb_id: Number(tvdbId) },
+          body: { tvdb_id: tvdbId },
         })
 
         if (erroTvdb) {
-          console.error(`Erro ao resolver id "${tvdbId}" de "${nomeSerie}" via TVDB:`, erroTvdb)
+          console.error(`[Importador] Erro no 'buscar-por-tvdb' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
         }
 
         if (tvdbData?.resultado?.tmdb_id) {
@@ -272,21 +284,35 @@ export default function Configuracoes() {
         }
 
         if (!tmdbIdNum) {
-          console.warn(`Mapeamento não encontrado para TVDB ID: ${tvdbId} ("${nomeSerie}")`)
+          console.warn(`[Importador] TMDB ID não encontrado para a série "${nomeSerie}" (TVDB: ${tvdbId}). Pulando série.`)
           continue
         }
+
+        console.log(`[Importador] Resolvido para TMDB ID: ${tmdbIdNum}. Chamando 'adicionar-titulo'...`);
 
         const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
           body: { tmdb_id: tmdbIdNum, media_type: 'tv' },
         })
-        if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
+        if (erroAdd) { 
+          console.error(`[Importador] Erro ao adicionar o título "${nomeSerie}" (TMDB: ${tmdbIdNum}):`, erroAdd)
+          continue 
+        }
 
-        const { data: episodiosBanco } = await supabase
+        console.log(`[Importador] Título "${nomeSerie}" adicionado/verificado. Consultando episódios no banco...`);
+
+        const { data: episodiosBanco, error: erroEps } = await supabase
           .from('episode')
           .select('id, season_number, episode_number')
           .eq('titulo_id', tmdbIdNum)
 
-        if (!episodiosBanco || episodiosBanco.length === 0) continue
+        if (erroEps) {
+          console.error(`[Importador] Erro ao carregar episódios de "${nomeSerie}" do banco:`, erroEps)
+        }
+
+        if (!episodiosBanco || episodiosBanco.length === 0) {
+          console.warn(`[Importador] Nenhum episódio da série "${nomeSerie}" foi retornado pelo banco após a ingestão.`)
+          continue
+        }
 
         const idsParaMarcar = []
 
@@ -300,30 +326,47 @@ export default function Configuracoes() {
           }
         }
 
+        console.log(`[Importador] "${nomeSerie}": Encontrados ${idsParaMarcar.length} de ${listaEpisodios.length} episódios correspondentes no banco.`);
+
         if (idsParaMarcar.length > 0) {
           const payload = idsParaMarcar.map((epId) => ({
             user_id: user.id,
             episode_id: epId,
           }))
 
-          await supabase.from('watched_episode').upsert(payload, { onConflict: 'user_id,episode_id' })
+          const { error: erroUpsertWatched } = await supabase
+            .from('watched_episode')
+            .upsert(payload, { onConflict: 'user_id,episode_id' })
+
+          if (erroUpsertWatched) {
+            console.error(`[Importador] Erro ao registrar episódios assistidos de "${nomeSerie}":`, erroUpsertWatched)
+          }
         }
 
         const totalEpisodiosSerie = episodiosBanco.length
         
-        const { count: assistidosCount } = await supabase
+        const { count: assistidosCount, error: erroCount } = await supabase
           .from('watched_episode')
           .select('episode_id', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .in('episode_id', episodiosBanco.map(e => e.id))
 
-        if (assistidosCount > 0) {
+        if (erroCount) {
+          console.error(`[Importador] Erro ao contar episódios vistos de "${nomeSerie}":`, erroCount)
+        }
+
+        if (assistidosCount && assistidosCount > 0) {
           const status = assistidosCount >= totalEpisodiosSerie ? 'visto' : 'vendo'
-          await supabase.from('user_item').upsert({
+          
+          const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
             user_id: user.id,
             titulo_id: tmdbIdNum,
             status,
           }, { onConflict: 'user_id,titulo_id' })
+
+          if (erroUpsertUserItem) {
+            console.error(`[Importador] Erro ao atualizar status de "${nomeSerie}" em user_item:`, erroUpsertUserItem)
+          }
         }
       }
 
@@ -334,7 +377,7 @@ export default function Configuracoes() {
         setPorcentagemProgresso(0)
       }, 5000)
     } catch (err) {
-      console.error(err)
+      console.error('[Importador] Falha no fluxo:', err)
       setProgresso(`Erro na importação: ${err.message}`)
     } finally {
       setImportando(false)
