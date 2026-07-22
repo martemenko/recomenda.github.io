@@ -50,13 +50,13 @@ export default function Configuracoes() {
         if (char === '"') {
           dentroDeAspas = !dentroDeAspas
         } else if (char === ',' && !dentroDeAspas) {
-          resultado.push(campoAtual.trim().replace(/^"|"$/g, ''))
+          resultado.push(campoAtual.trim().replace(/^["']|["']$/g, ''))
           campoAtual = ''
         } else {
           campoAtual += char
         }
       }
-      resultado.push(campoAtual.trim().replace(/^"|"$/g, ''))
+      resultado.push(campoAtual.trim().replace(/^["']|["']$/g, ''))
       return resultado
     })
   }
@@ -151,20 +151,25 @@ export default function Configuracoes() {
         } else {
           const seriesRows = parseCSV(seriesContent)
           if (seriesRows.length > 1) {
-            const headers = seriesRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase())
-            const idIdx = headers.findIndex(h => h === 'tvdb_id')
-            const titleIdx = headers.findIndex(h => h === 'title')
+            const headers = seriesRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
+            const idIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
+            const titleIdx = headers.findIndex(h => h === 'title' || h === 'name' || h.includes('titulo') || h.includes('título'))
+            
             if (idIdx >= 0 && titleIdx >= 0) {
               for (let i = 1; i < seriesRows.length; i++) {
                 const row = seriesRows[i]
-                if (row[idIdx] && row[titleIdx]) {
-                  seriesNamesMap.set(row[idIdx].trim(), row[titleIdx].trim())
+                const tvdbIdVal = row[idIdx]?.replace(/^["']|["']$/g, '').trim()
+                const titleVal = row[titleIdx]?.replace(/^["']|["']$/g, '').trim()
+                if (tvdbIdVal && titleVal) {
+                  seriesNamesMap.set(tvdbIdVal, titleVal)
                 }
               }
             }
           }
         }
       }
+
+      console.log(`[Importador] Mapeamento de nomes de séries carregado: ${seriesNamesMap.size} títulos.`)
 
       // 2. Procurar e processar o arquivo de episódios (caso os dados não estejam aninhados no JSON acima)
       const episodesFileKey = files.find(name => name.includes('tvtime-series-episodes'))
@@ -207,11 +212,11 @@ export default function Configuracoes() {
             throw new Error('O arquivo CSV de episódios está vazio ou inválido.')
           }
 
-          const headers = epRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase())
-          const sIdIdx = headers.findIndex(h => h === 'series_tvdb_id')
-          const seasonIdx = headers.findIndex(h => h === 'season')
-          const episodeIdx = headers.findIndex(h => h === 'episode')
-          const isWatchedIdx = headers.findIndex(h => h === 'is_watched')
+          const headers = epRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
+          const sIdIdx = headers.findIndex(h => h === 'series_tvdb_id' || h.includes('series_tvdb'))
+          const seasonIdx = headers.findIndex(h => h === 'season' || h.includes('season'))
+          const episodeIdx = headers.findIndex(h => h === 'episode' || h.includes('episode'))
+          const isWatchedIdx = headers.findIndex(h => h === 'is_watched' || h.includes('watched'))
 
           if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
             throw new Error('As colunas obrigatórias do TV Time (series_tvdb_id, season, episode) não foram identificadas no CSV.')
@@ -227,7 +232,7 @@ export default function Configuracoes() {
             }
             if (!isWatched) continue
 
-            const tvdbId = row[sIdIdx]?.trim()
+            const tvdbId = row[sIdIdx]?.replace(/^["']|["']$/g, '').trim()
             const temporadaNum = parseInt(row[seasonIdx], 10)
             const episodioNum = parseInt(row[episodeIdx], 10)
 
@@ -260,17 +265,44 @@ export default function Configuracoes() {
 
         let tmdbIdNum = null
 
-        // Busca o ID direto no endpoint do TVDB para TMDB (buscar-por-tvdb). Mantendo formato de string bruto do original.
-        const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
-          body: { tvdb_id: tvdbId },
-        })
+        // 1. Tenta buscar o ID de/para usando o endpoint TVDB -> TMDB
+        try {
+          const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
+            body: { tvdb_id: tvdbId },
+          })
 
-        if (erroTvdb) {
-          console.error(`[Importador] Erro no 'buscar-por-tvdb' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
+          if (erroTvdb) {
+            console.error(`[Importador] Erro no 'buscar-por-tvdb' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
+          } else if (tvdbData?.resultado?.tmdb_id) {
+            tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+            console.log(`[Importador] ID TVDB ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
+          }
+        } catch (e) {
+          console.error(`[Importador] Exceção ao chamar 'buscar-por-tvdb' para "${nomeSerie}":`, e)
         }
 
-        if (tvdbData?.resultado?.tmdb_id) {
-          tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+        // 2. Fallback de alta disponibilidade: Se o de/para direto falhar (por CORS ou ID inexistente), buscamos pelo nome da série
+        if (!tmdbIdNum && nomeSerie && !nomeSerie.startsWith('Série (ID:')) {
+          try {
+            console.log(`[Importador] Fallback: Buscando por nome no TMDB para "${nomeSerie}"...`)
+            const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
+              body: { query: nomeSerie },
+            })
+
+            if (erroBusca) {
+              console.error(`[Importador] Erro ao buscar por nome "${nomeSerie}":`, erroBusca)
+            } else {
+              const melhor = buscaData?.results?.[0]
+              if (melhor?.tmdb_id) {
+                tmdbIdNum = Number(melhor.tmdb_id)
+                console.log(`[Importador] Fallback com sucesso para "${nomeSerie}". TMDB ID: ${tmdbIdNum}`)
+              } else {
+                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa por nome: "${nomeSerie}"`)
+              }
+            }
+          } catch (e) {
+            console.error(`[Importador] Exceção no fallback para "${nomeSerie}":`, e)
+          }
         }
 
         if (!tmdbIdNum) {
@@ -287,8 +319,6 @@ export default function Configuracoes() {
           console.error(`[Importador] Erro ao adicionar o título "${nomeSerie}" (TMDB: ${tmdbIdNum}):`, erroAdd)
           continue 
         }
-
-        console.log(`[Importador] Título "${nomeSerie}" adicionado/verificado. Consultando episódios no banco...`);
 
         const { data: episodiosBanco, error: erroEps } = await supabase
           .from('episode')
