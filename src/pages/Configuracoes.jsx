@@ -1,11 +1,32 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import JSZip from 'jszip'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
+
+// Função auxiliar para carregar o JSZip dinamicamente via CDN e evitar erros de build
+function carregarJSZip() {
+  return new Promise((resolve, reject) => {
+    if (window.JSZip) {
+      resolve(window.JSZip)
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+    script.async = true
+    script.onload = () => {
+      if (window.JSZip) {
+        resolve(window.JSZip)
+      } else {
+        reject(new Error('Não foi possível inicializar o JSZip.'))
+      }
+    }
+    script.onerror = () => reject(new Error('Erro ao carregar a biblioteca JSZip.'))
+    document.head.appendChild(script)
+  })
+}
 
 export default function Configuracoes() {
   const navigate = useNavigate()
@@ -61,106 +82,134 @@ export default function Configuracoes() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado.')
 
+      setProgresso('Carregando biblioteca de descompactação...')
+      const JSZip = await carregarJSZip()
+
       setProgresso('Descompactando arquivo ZIP...')
       const zip = await JSZip.loadAsync(zipFile)
       const files = Object.keys(zip.files)
 
-      // 1. Tenta carregar o mapeamento de nomes de séries do followed_tv_show.csv
-      const followedFileKey = files.find(name => 
-        name.endsWith('followed_tv_show.csv') || 
-        name.endsWith('followed_tv_shows.csv') || 
-        name.endsWith('followed_shows.csv') || 
-        name.endsWith('followed_show.csv')
+      // 1. Procurar e processar o arquivo de séries para mapear nome da série por tvdb_id
+      const seriesFileKey = files.find(name => 
+        name.includes('tvtime-series-') && !name.includes('tvtime-series-episodes')
       )
       
       const seriesNamesMap = new Map()
-      if (followedFileKey) {
-        const followedContent = await zip.files[followedFileKey].async('string')
-        const followedRows = parseCSV(followedContent)
-        if (followedRows.length > 1) {
-          const headers = followedRows[0]
-          const idIdx = headers.findIndex(h => {
-            const l = h.toLowerCase()
-            return l === 'tv_show_id' || l === 'show_id' || l === 'id' || l === 's_id'
-          })
-          const nameIdx = headers.findIndex(h => {
-            const l = h.toLowerCase()
-            return l === 'tv_show_name' || l === 'show_name' || l === 'name' || l === 'title' || l === 'tv_show_title'
-          })
-
-          if (idIdx >= 0 && nameIdx >= 0) {
-            for (let i = 1; i < followedRows.length; i++) {
-              const row = followedRows[i]
-              if (row[idIdx] && row[nameIdx]) {
-                seriesNamesMap.set(row[idIdx].trim(), row[nameIdx].trim())
+      if (seriesFileKey) {
+        const isJson = seriesFileKey.endsWith('.json')
+        const seriesContent = await zip.files[seriesFileKey].async('string')
+        
+        if (isJson) {
+          try {
+            const seriesList = JSON.parse(seriesContent)
+            if (Array.isArray(seriesList)) {
+              for (const s of seriesList) {
+                const tvdbId = s.tvdb_id || s.tvdbId
+                const title = s.title || s.name
+                if (tvdbId && title) {
+                  seriesNamesMap.set(String(tvdbId).trim(), String(title).trim())
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Erro ao processar JSON de séries:', e)
+          }
+        } else {
+          const seriesRows = parseCSV(seriesContent)
+          if (seriesRows.length > 1) {
+            const headers = seriesRows[0]
+            const idIdx = headers.findIndex(h => h.toLowerCase().trim() === 'tvdb_id')
+            const titleIdx = headers.findIndex(h => h.toLowerCase().trim() === 'title')
+            if (idIdx >= 0 && titleIdx >= 0) {
+              for (let i = 1; i < seriesRows.length; i++) {
+                const row = seriesRows[i]
+                if (row[idIdx] && row[titleIdx]) {
+                  seriesNamesMap.set(row[idIdx].trim(), row[titleIdx].trim())
+                }
               }
             }
           }
         }
       }
 
-      // 2. Busca pelo arquivo que contem os episódios vistos
-      const episodesFileKey = files.find(name => 
-        name.endsWith('tracking-prod-records-v2.csv') || 
-        name.endsWith('seen_episode.csv') || 
-        name.endsWith('seen_episodes.csv')
-      )
+      // 2. Procurar e processar o arquivo de episódios
+      const episodesFileKey = files.find(name => name.includes('tvtime-series-episodes'))
 
       if (!episodesFileKey) {
-        throw new Error('Arquivo de histórico de episódios (tracking-prod-records-v2.csv) não encontrado no ZIP.')
+        throw new Error('Arquivo de episódios (tvtime-series-episodes) não encontrado no ZIP.')
       }
 
       setProgresso('Lendo arquivo de episódios...')
-      const episodesContent = await zip.files[episodesFileKey].async('string')
-      const episodeRows = parseCSV(episodesContent)
-      if (episodeRows.length < 2) {
-        throw new Error('Arquivo de episódios vazio ou inválido.')
-      }
-
-      const headers = episodeRows[0]
-      const keyIdx = headers.findIndex(h => h.toLowerCase() === 'key')
-      const sIdIdx = headers.findIndex(h => {
-        const l = h.toLowerCase()
-        return l === 's_id' || l === 'show_id' || l === 'tv_show_id' || l === 'series_id' || l === 'id'
-      })
-      const seasonIdx = headers.findIndex(h => {
-        const l = h.toLowerCase()
-        return l === 'season_number' || l === 's_no' || l === 'season_no' || l === 'season'
-      })
-      const episodeIdx = headers.findIndex(h => {
-        const l = h.toLowerCase()
-        return l === 'episode_number' || l === 'ep_no' || l === 'ep_number' || l === 'episode_no' || l === 'episode'
-      })
-
-      if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
-        throw new Error('As colunas estruturais obrigatórias do TV Time não foram identificadas no arquivo de episódios.')
-      }
-
+      const epContent = await zip.files[episodesFileKey].async('string')
+      const isEpJson = episodesFileKey.endsWith('.json')
       const seriesMap = new Map()
 
-      for (let i = 1; i < episodeRows.length; i++) {
-        const row = episodeRows[i]
+      if (isEpJson) {
+        try {
+          const epList = JSON.parse(epContent)
+          if (Array.isArray(epList)) {
+            for (const ep of epList) {
+              const isWatchedVal = ep.is_watched !== undefined ? ep.is_watched : ep.isWatched
+              const isWatched = isWatchedVal === true || isWatchedVal === 1 || String(isWatchedVal).toLowerCase() === 'true'
+              if (!isWatched) continue
 
-        // Se houver uma coluna key, garante que seja um registro de visualização de episódio
-        if (keyIdx >= 0 && row[keyIdx]) {
-          const k = row[keyIdx].toLowerCase()
-          if (!k.startsWith('watch-episode-') && !k.startsWith('rewatch-episode-')) {
-            continue
+              const tvdbId = ep.series_tvdb_id || ep.seriesTvdbId
+              const temporadaNum = parseInt(ep.season, 10)
+              const episodioNum = parseInt(ep.episode, 10)
+
+              if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+
+              const sTvdbIdStr = String(tvdbId).trim()
+              const nomeSerie = seriesNamesMap.get(sTvdbIdStr) || `Série (ID: ${sTvdbIdStr})`
+
+              if (!seriesMap.has(sTvdbIdStr)) {
+                seriesMap.set(sTvdbIdStr, { tvdbId: sTvdbIdStr, nomeSerie, episodios: [] })
+              }
+              seriesMap.get(sTvdbIdStr).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
+            }
           }
+        } catch (e) {
+          throw new Error('Erro ao processar JSON de episódios: ' + e.message)
+        }
+      } else {
+        const epRows = parseCSV(epContent)
+        if (epRows.length < 2) {
+          throw new Error('O arquivo CSV de episódios está vazio ou inválido.')
         }
 
-        const tvdbId = row[sIdIdx]?.trim()
-        const temporadaNum = parseInt(row[seasonIdx], 10)
-        const episodioNum = parseInt(row[episodeIdx], 10)
+        const headers = epRows[0]
+        const sIdIdx = headers.findIndex(h => h.toLowerCase().trim() === 'series_tvdb_id')
+        const seasonIdx = headers.findIndex(h => h.toLowerCase().trim() === 'season')
+        const episodeIdx = headers.findIndex(h => h.toLowerCase().trim() === 'episode')
+        const isWatchedIdx = headers.findIndex(h => h.toLowerCase().trim() === 'is_watched')
 
-        if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
-
-        const nomeSerie = seriesNamesMap.get(tvdbId) || `Série (ID: ${tvdbId})`
-
-        if (!seriesMap.has(tvdbId)) {
-          seriesMap.set(tvdbId, { tvdbId, nomeSerie, episodios: [] })
+        if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
+          throw new Error('Colunas obrigatórias do TV Time (series_tvdb_id, season, episode) não identificadas no CSV.')
         }
-        seriesMap.get(tvdbId).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
+
+        for (let i = 1; i < epRows.length; i++) {
+          const row = epRows[i]
+          
+          let isWatched = true
+          if (isWatchedIdx >= 0) {
+            const val = String(row[isWatchedIdx] ?? '').toLowerCase().trim()
+            isWatched = val === 'true' || val === '1' || val === 'yes'
+          }
+          if (!isWatched) continue
+
+          const tvdbId = row[sIdIdx]?.trim()
+          const temporadaNum = parseInt(row[seasonIdx], 10)
+          const episodioNum = parseInt(row[episodeIdx], 10)
+
+          if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+
+          const nomeSerie = seriesNamesMap.get(tvdbId) || `Série (ID: ${tvdbId})`
+
+          if (!seriesMap.has(tvdbId)) {
+            seriesMap.set(tvdbId, { tvdbId, nomeSerie, episodios: [] })
+          }
+          seriesMap.get(tvdbId).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
+        }
       }
 
       let processados = 0
@@ -286,7 +335,6 @@ export default function Configuracoes() {
 
   return (
     <div className="flex-1 pb-10">
-      {/* TopBar não tem prop "onBack" - o botão de voltar precisa ir pelo rightSlot */}
       <TopBar
         title="Configurações"
         rightSlot={
@@ -346,7 +394,6 @@ export default function Configuracoes() {
 
       <SectionLabel>Sessão e Conta</SectionLabel>
       <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
-        {/* Botão de Sair da Conta */}
         <div>
           <button
             onClick={sairDaConta}
@@ -358,7 +405,6 @@ export default function Configuracoes() {
 
         <hr className="border-white/5" />
 
-        {/* Exclusão Definitiva */}
         <div className="space-y-3 pt-1">
           <div className="text-xs text-muted">
             Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
