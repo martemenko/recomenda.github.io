@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import JSZip from 'jszip'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
@@ -9,10 +10,7 @@ import SectionLabel from '../components/SectionLabel'
 export default function Configuracoes() {
   const navigate = useNavigate()
   const [perfilPrivado, setPerfilPrivado] = useState(false)
-  const [csvFile, setCsvFile] = useState(null)
-  const [csvHeaders, setCsvHeaders] = useState([])
-  const [csvLinhas, setCsvLinhas] = useState([])
-  const [mapeamento, setMapeamento] = useState({ titulo: '', temporada: '', episodio: '', assistido: '', id: '' })
+  const [zipFile, setZipFile] = useState(null)
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
@@ -45,51 +43,13 @@ export default function Configuracoes() {
   function selecionarArquivo(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setCsvFile(file)
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      const texto = evt.target?.result ?? ''
-      const matriz = parseCSV(texto)
-      if (matriz.length < 2) {
-        setStatusMsg('Arquivo CSV inválido ou vazio.')
-        return
-      }
-      const headers = matriz[0]
-      const linhas = matriz.slice(1)
-      setCsvHeaders(headers)
-      setCsvLinhas(linhas)
-
-      // Auto-detecção inteligente de colunas
-      const guess = { titulo: -1, temporada: -1, episodio: -1, assistido: -1, id: -1 }
-      headers.forEach((h, i) => {
-        const l = h.toLowerCase().trim()
-        // series_tvdb_id contém "series", por isso o guess de título exclui colunas de id explicitamente
-        if (
-          (l === 'title' || l === 'name' || l.includes('titulo') || l.includes('título') || l.includes('series')) &&
-          !l.includes('tvdb') && !l.includes('tmdb') && !l.includes('imdb') && !l.includes('uuid') && !l.includes('_id')
-        ) guess.titulo = i
-        if (l === 'season' || l.includes('temporada')) guess.temporada = i
-        if (l === 'episode' && !l.includes('tvdb') && !l.includes('tmdb')) guess.episodio = i
-        if (l.includes('episodio') || l.includes('episódio')) guess.episodio = i
-        if (l === 'is_watched' || l === 'watched' || l.includes('assistid') || l.includes('status')) guess.assistido = i
-        // Id da série (TVDB ou TMDB, tanto faz - o import tenta os dois) - nunca o id do episódio
-        if ((l.includes('series_tvdb') || l.includes('series_tmdb') || l === 'tvdbid' || l === 'tmdbid') && !l.includes('episode')) guess.id = i
-      })
-
-      setMapeamento({
-        titulo: guess.titulo >= 0 ? String(guess.titulo) : '',
-        temporada: guess.temporada >= 0 ? String(guess.temporada) : '',
-        episodio: guess.episodio >= 0 ? String(guess.episodio) : '',
-        assistido: guess.assistido >= 0 ? String(guess.assistido) : '',
-        id: guess.id >= 0 ? String(guess.id) : '',
-      })
-    }
-    reader.readAsText(file)
+    setZipFile(file)
+    setStatusMsg('')
   }
 
   async function importar() {
-    if (!mapeamento.titulo || !mapeamento.temporada || !mapeamento.episodio) {
-      alert('Selecione ao menos os campos de Título, Temporada e Episódio.')
+    if (!zipFile) {
+      alert('Selecione o arquivo .zip exportado do TV Time.')
       return
     }
 
@@ -101,87 +61,141 @@ export default function Configuracoes() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado.')
 
-      const idxTitulo = parseInt(mapeamento.titulo, 10)
-      const idxTemp = parseInt(mapeamento.temporada, 10)
-      const idxEp = parseInt(mapeamento.episodio, 10)
-      const idxAssistido = mapeamento.assistido !== '' ? parseInt(mapeamento.assistido, 10) : -1
-      const idxId = mapeamento.id !== '' ? parseInt(mapeamento.id, 10) : -1
+      setProgresso('Descompactando arquivo ZIP...')
+      const zip = await JSZip.loadAsync(zipFile)
+      const files = Object.keys(zip.files)
+
+      // 1. Tenta carregar o mapeamento de nomes de séries do followed_tv_show.csv
+      const followedFileKey = files.find(name => 
+        name.endsWith('followed_tv_show.csv') || 
+        name.endsWith('followed_tv_shows.csv') || 
+        name.endsWith('followed_shows.csv') || 
+        name.endsWith('followed_show.csv')
+      )
+      
+      const seriesNamesMap = new Map()
+      if (followedFileKey) {
+        const followedContent = await zip.files[followedFileKey].async('string')
+        const followedRows = parseCSV(followedContent)
+        if (followedRows.length > 1) {
+          const headers = followedRows[0]
+          const idIdx = headers.findIndex(h => {
+            const l = h.toLowerCase()
+            return l === 'tv_show_id' || l === 'show_id' || l === 'id' || l === 's_id'
+          })
+          const nameIdx = headers.findIndex(h => {
+            const l = h.toLowerCase()
+            return l === 'tv_show_name' || l === 'show_name' || l === 'name' || l === 'title' || l === 'tv_show_title'
+          })
+
+          if (idIdx >= 0 && nameIdx >= 0) {
+            for (let i = 1; i < followedRows.length; i++) {
+              const row = followedRows[i]
+              if (row[idIdx] && row[nameIdx]) {
+                seriesNamesMap.set(row[idIdx].trim(), row[nameIdx].trim())
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Busca pelo arquivo que contem os episódios vistos
+      const episodesFileKey = files.find(name => 
+        name.endsWith('tracking-prod-records-v2.csv') || 
+        name.endsWith('seen_episode.csv') || 
+        name.endsWith('seen_episodes.csv')
+      )
+
+      if (!episodesFileKey) {
+        throw new Error('Arquivo de histórico de episódios (tracking-prod-records-v2.csv) não encontrado no ZIP.')
+      }
+
+      setProgresso('Lendo arquivo de episódios...')
+      const episodesContent = await zip.files[episodesFileKey].async('string')
+      const episodeRows = parseCSV(episodesContent)
+      if (episodeRows.length < 2) {
+        throw new Error('Arquivo de episódios vazio ou inválido.')
+      }
+
+      const headers = episodeRows[0]
+      const keyIdx = headers.findIndex(h => h.toLowerCase() === 'key')
+      const sIdIdx = headers.findIndex(h => {
+        const l = h.toLowerCase()
+        return l === 's_id' || l === 'show_id' || l === 'tv_show_id' || l === 'series_id' || l === 'id'
+      })
+      const seasonIdx = headers.findIndex(h => {
+        const l = h.toLowerCase()
+        return l === 'season_number' || l === 's_no' || l === 'season_no' || l === 'season'
+      })
+      const episodeIdx = headers.findIndex(h => {
+        const l = h.toLowerCase()
+        return l === 'episode_number' || l === 'ep_no' || l === 'ep_number' || l === 'episode_no' || l === 'episode'
+      })
+
+      if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
+        throw new Error('As colunas estruturais obrigatórias do TV Time não foram identificadas no arquivo de episódios.')
+      }
 
       const seriesMap = new Map()
 
-      for (const linha of csvLinhas) {
-        const nomeSerie = linha[idxTitulo]
-        const temporadaNum = parseInt(linha[idxTemp], 10)
-        const episodioNum = parseInt(linha[idxEp], 10)
+      for (let i = 1; i < episodeRows.length; i++) {
+        const row = episodeRows[i]
 
-        if (!nomeSerie || isNaN(temporadaNum) || isNaN(episodioNum)) continue
-
-        let assistido = true
-        if (idxAssistido >= 0) {
-          const val = String(linha[idxAssistido] ?? '').toLowerCase().trim()
-          assistido = val === 'true' || val === '1' || val === 'yes' || val === 'visto' || val === 'assistido'
+        // Se houver uma coluna key, garante que seja um registro de visualização de episódio
+        if (keyIdx >= 0 && row[keyIdx]) {
+          const k = row[keyIdx].toLowerCase()
+          if (!k.startsWith('watch-episode-') && !k.startsWith('rewatch-episode-')) {
+            continue
+          }
         }
 
-        const idValor = idxId >= 0 ? linha[idxId] : null
-        const chave = idValor || nomeSerie
+        const tvdbId = row[sIdIdx]?.trim()
+        const temporadaNum = parseInt(row[seasonIdx], 10)
+        const episodioNum = parseInt(row[episodeIdx], 10)
 
-        if (!seriesMap.has(chave)) {
-          seriesMap.set(chave, { nomeSerie, idValor, episodios: [] })
+        if (!tvdbId || isNaN(temporadaNum) || isNaN(episodioNum)) continue
+
+        const nomeSerie = seriesNamesMap.get(tvdbId) || `Série (ID: ${tvdbId})`
+
+        if (!seriesMap.has(tvdbId)) {
+          seriesMap.set(tvdbId, { tvdbId, nomeSerie, episodios: [] })
         }
-        seriesMap.get(chave).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido })
+        seriesMap.get(tvdbId).episodios.push({ temporada: temporadaNum, episodio: episodioNum, assistido: true })
       }
 
       let processados = 0
       const totalSeries = seriesMap.size
 
-      for (const [, grupo] of seriesMap.entries()) {
-        const { nomeSerie, idValor, episodios: listaEpisodios } = grupo
+      for (const [tvdbId, grupo] of seriesMap.entries()) {
+        const { nomeSerie, episodios: listaEpisodios } = grupo
         processados++
         setPorcentagemProgresso(Math.round((processados / totalSeries) * 100))
-        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`) // sempre o nome, nunca o id
+        setProgresso(`Processando ${processados}/${totalSeries}: "${nomeSerie}"...`)
 
         let tmdbIdNum = null
-        let jaIngerido = false
 
-        if (idValor) {
-          // 1º teste: trata o id como TMDB direto - mais eficiente, ingere na mesma chamada
-          const { error: erroTesteTmdb } = await supabase.functions.invoke('adicionar-titulo', {
-            body: { tmdb_id: Number(idValor), media_type: 'tv' },
-          })
-          if (!erroTesteTmdb) {
-            tmdbIdNum = Number(idValor)
-            jaIngerido = true
-          } else {
-            // Não é um tmdb_id válido - tenta o mesmo valor como tvdb_id via /find
-            const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
-              body: { tvdb_id: idValor },
-            })
-            if (erroTvdb) console.error(`Erro ao resolver id "${idValor}" de "${nomeSerie}" via TVDB:`, erroTvdb)
-            if (tvdbData?.resultado?.tmdb_id) {
-              tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
-            }
-          }
+        // Busca o ID direto no endpoint do TVDB para TMDB (buscar-por-tvdb)
+        const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('buscar-por-tvdb', {
+          body: { tvdb_id: Number(tvdbId) },
+        })
+
+        if (erroTvdb) {
+          console.error(`Erro ao resolver id "${tvdbId}" de "${nomeSerie}" via TVDB:`, erroTvdb)
         }
 
-        let mediaType = 'tv'
+        if (tvdbData?.resultado?.tmdb_id) {
+          tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+        }
+
         if (!tmdbIdNum) {
-          // Nem id mapeado, nem achou por ele - cai pra busca por nome
-          const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
-            body: { query: nomeSerie },
-          })
-          if (erroBusca) { console.error(`Erro ao buscar "${nomeSerie}":`, erroBusca); continue }
-          const melhor = buscaData?.results?.[0]
-          if (!melhor?.tmdb_id) continue
-          tmdbIdNum = Number(melhor.tmdb_id)
-          mediaType = melhor.media_type || 'tv'
+          console.warn(`Mapeamento não encontrado para TVDB ID: ${tvdbId} ("${nomeSerie}")`)
+          continue
         }
 
-        if (!jaIngerido) {
-          const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
-            body: { tmdb_id: tmdbIdNum, media_type: mediaType },
-          })
-          if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
-        }
+        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+          body: { tmdb_id: tmdbIdNum, media_type: 'tv' },
+        })
+        if (erroAdd) { console.error(`Erro ao adicionar "${nomeSerie}":`, erroAdd); continue }
 
         const { data: episodiosBanco } = await supabase
           .from('episode')
@@ -295,99 +309,23 @@ export default function Configuracoes() {
         />
       </div>
 
-      <SectionLabel>Importar Dados (CSV)</SectionLabel>
+      <SectionLabel>Importar Dados (TV Time ZIP)</SectionLabel>
       <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-4">
         <input
           type="file"
-          accept=".csv"
+          accept=".zip"
           onChange={selecionarArquivo}
           className="block w-full text-xs text-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-display file:bg-surface2 file:text-amber hover:file:bg-amber/20"
         />
 
-        {csvHeaders.length > 0 && (
-          <div className="space-y-3 pt-2 border-t border-white/5">
-            <div className="text-xs font-display font-semibold text-amber">Mapeamento de Colunas</div>
-            
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <label className="text-muted block mb-1">Título</label>
-                <select
-                  value={mapeamento.titulo}
-                  onChange={(e) => setMapeamento({ ...mapeamento, titulo: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">Temporada</label>
-                <select
-                  value={mapeamento.temporada}
-                  onChange={(e) => setMapeamento({ ...mapeamento, temporada: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">Episódio</label>
-                <select
-                  value={mapeamento.episodio}
-                  onChange={(e) => setMapeamento({ ...mapeamento, episodio: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Selecione...</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">Status/Assistido (Op)</label>
-                <select
-                  value={mapeamento.assistido}
-                  onChange={(e) => setMapeamento({ ...mapeamento, assistido: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Todos Assistidos</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-muted block mb-1">ID (TVDB ou TMDB, opcional)</label>
-                <select
-                  value={mapeamento.id}
-                  onChange={(e) => setMapeamento({ ...mapeamento, id: e.target.value })}
-                  className="w-full bg-surface2 border border-white/10 rounded-xl p-2 text-ink"
-                >
-                  <option value="">Nenhum (busca por nome)</option>
-                  {csvHeaders.map((h, i) => (
-                    <option key={i} value={i}>{h}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button
-              onClick={importar}
-              disabled={importando}
-              className="w-full py-3 bg-amber text-bg font-display font-semibold rounded-xl text-sm transition-opacity disabled:opacity-50 mt-2"
-            >
-              {importando ? 'Importando...' : 'Iniciar Importação'}
-            </button>
-          </div>
+        {zipFile && (
+          <button
+            onClick={importar}
+            disabled={importando}
+            className="w-full py-3 bg-amber text-bg font-display font-semibold rounded-xl text-sm transition-opacity disabled:opacity-50 mt-2"
+          >
+            {importando ? 'Importando...' : 'Iniciar Importação'}
+          </button>
         )}
 
         {progresso && (
