@@ -6,6 +6,7 @@ import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
 import EpisodioRow from '../components/EpisodioRow'
+import PosterCard from '../components/PosterCard'
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
@@ -24,6 +25,7 @@ export default function SeriesPage() {
 
   const [assistirASeguir, setAssistirASeguir] = useState([])
   const [semAssistirHaTempo, setSemAssistirHaTempo] = useState([])
+  const [seriesAssistidas, setSeriesAssistidas] = useState([]) // Séries concluídas/vistas
   const [historico, setHistorico] = useState([])
   const [emBreve, setEmBreve] = useState([])
 
@@ -51,6 +53,9 @@ export default function SeriesPage() {
     const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
     const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
     setItensCache(itens)
+
+    // Separa as séries concluídas ('visto') para uma seção dedicada
+    setSeriesAssistidas(itens.filter(i => i.status === 'visto'))
 
     const tituloIds = itens.map((i) => i.titulo_id)
     if (tituloIds.length === 0) {
@@ -96,9 +101,6 @@ export default function SeriesPage() {
     setCarregando(false)
   }
 
-  // Recalcula "assistir a seguir" / "sem assistir há tempo" a partir dos dados já em
-  // memória - não bate no banco de novo. Usado no carregamento inicial E depois de
-  // marcar um episódio (atualização local, sem recarregar a tela toda).
   function recalcularBuckets(itens, episodios, assistidosAtual) {
     const hoje = new Date()
     const seguir = []
@@ -150,17 +152,14 @@ export default function SeriesPage() {
     )
   }
 
-  // Marca/desmarca um episódio com atualização LOCAL (sem recarregar a tela toda):
-  // 1. Dispara a animação de saída na linha clicada.
-  // 2. Grava no banco.
-  // 3. Atualiza o cache local de assistidos e recalcula só os buckets, na memória.
   async function marcarAssistido(episodeId, jaMarcado) {
     setSaindoIds((prev) => new Set(prev).add(episodeId))
     await new Promise((r) => setTimeout(r, DURACAO_ANIMACAO_MS))
 
+    // Uso de .insert() e .delete() direto para contornar limitações de índices únicos composto
     const { error } = jaMarcado
       ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
-      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+      : await supabase.from('watched_episode').insert({ user_id: user.id, episode_id: episodeId })
 
     if (error) {
       console.error('Erro ao marcar episódio assistido:', error)
@@ -176,8 +175,6 @@ export default function SeriesPage() {
     recalcularBuckets(itensCache, episodiosCache, novoAssistidosMapa)
     setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
 
-    // Histórico continua vindo do banco (ordenado pela data real do servidor),
-    // mas isso não bloqueia a atualização visual acima.
     carregarHistorico()
   }
 
@@ -232,7 +229,22 @@ export default function SeriesPage() {
               </>
             )}
 
-            {/* Só aparece rolando a tela pra baixo, por estar mais abaixo na página */}
+            {seriesAssistidas.length > 0 && (
+              <>
+                <SectionLabel>Séries Concluídas</SectionLabel>
+                <div className="grid grid-cols-3 gap-3 px-4 pb-6">
+                  {seriesAssistidas.map((s) => (
+                    <PosterCard
+                      key={s.titulo_id}
+                      imagem={s.titulo.imagem}
+                      nome={s.titulo.nome}
+                      onClick={() => navigate(`/titulo/${s.titulo_id}`)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
             <SectionLabel>Histórico assistido</SectionLabel>
             {historico.length === 0 && <EmptyRow texto="Nada assistido ainda." />}
             {historico.map((h, i) => (
