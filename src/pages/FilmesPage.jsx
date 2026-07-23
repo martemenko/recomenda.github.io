@@ -24,7 +24,6 @@ export default function FilmesPage() {
   const navigate = useNavigate()
   const [aba, setAba] = useState('lista')
   const [meusFilmes, setMeusFilmes] = useState([])
-  const [filmesVistos, setFilmesVistos] = useState([])
   const [generoAtivo, setGeneroAtivo] = useState(null)
   const [emBreve, setEmBreve] = useState([])
   const [carregando, setCarregando] = useState(true)
@@ -39,13 +38,12 @@ export default function FilmesPage() {
 
   async function carregarMeusFilmes() {
     setCarregando(true)
-    
-    // Busca tanto 'quero_ver' quanto 'visto' para capturar os importados do ZIP
+    // user_item não tem FK direta pra "movies" - mesma correção do SeriesPage
     const { data: itensBrutos, error: erroItens } = await supabase
       .from('user_item')
-      .select('titulo_id, status, titulo(nome, imagem)')
+      .select('titulo_id, titulo(nome, imagem)')
       .eq('user_id', user.id)
-      .in('status', ['quero_ver', 'visto'])
+      .eq('status', 'quero_ver')
     if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
 
     const ids = (itensBrutos ?? []).map((i) => i.titulo_id)
@@ -56,11 +54,7 @@ export default function FilmesPage() {
     if (erroMovies) console.error('Erro ao buscar movies:', erroMovies)
 
     const idsDeFilme = new Set((moviesEncontrados ?? []).map((m) => m.titulo_id))
-    const filmesFiltrados = (itensBrutos ?? []).filter((i) => idsDeFilme.has(i.titulo_id))
-    
-    // Separa os filmes em listas de exibição diferentes
-    setMeusFilmes(filmesFiltrados.filter(f => f.status === 'quero_ver'))
-    setFilmesVistos(filmesFiltrados.filter(f => f.status === 'visto'))
+    setMeusFilmes((itensBrutos ?? []).filter((i) => idsDeFilme.has(i.titulo_id)))
     setCarregando(false)
   }
 
@@ -91,7 +85,7 @@ export default function FilmesPage() {
             {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
             {!carregando && meusFilmes.length === 0 && (
               <div className="px-4 py-6 text-muted text-sm font-mono text-center">
-                Nenhum filme na lista "Quero ver" ainda.
+                Nenhum filme na lista ainda. Busque algo em Explorar.
               </div>
             )}
             <div className="grid grid-cols-3 gap-3 px-4 pb-6">
@@ -104,22 +98,6 @@ export default function FilmesPage() {
                 />
               ))}
             </div>
-
-            {filmesVistos.length > 0 && (
-              <>
-                <SectionLabel>Já Assistidos</SectionLabel>
-                <div className="grid grid-cols-3 gap-3 px-4 pb-6">
-                  {filmesVistos.map((f) => (
-                    <PosterCard
-                      key={f.titulo_id}
-                      imagem={f.titulo.imagem}
-                      nome={f.titulo.nome}
-                      onClick={() => navigate(`/titulo/${f.titulo_id}`)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
           </>
         )}
 
