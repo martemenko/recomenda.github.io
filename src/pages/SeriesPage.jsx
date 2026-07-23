@@ -74,7 +74,6 @@ export default function SeriesPage() {
       .from('watched_episode')
       .select('episode_id, watched_at')
       .eq('user_id', user.id)
-      .in('episode_id', (episodios ?? []).map((e) => e.id))
     if (erroAssistidos) console.error('Erro ao buscar watched_episode:', erroAssistidos)
 
     const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
