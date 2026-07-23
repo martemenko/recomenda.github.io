@@ -21,10 +21,13 @@ export default function Perfil() {
 
   async function carregar() {
     // Tempo vendo TV + episódios assistidos
+    // .range() aqui pra não cair no limite padrão de 1000 linhas do Supabase -
+    // essa é uma soma de todo o histórico, não dá pra escopar por título como nas outras telas.
     const { data: eps, error: erroEps } = await supabase
       .from('watched_episode')
       .select('episode(duration)')
       .eq('user_id', user.id)
+      .range(0, 19999)
     if (erroEps) console.error('Erro ao buscar watched_episode:', erroEps)
     const minutosTv = (eps ?? []).reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
 

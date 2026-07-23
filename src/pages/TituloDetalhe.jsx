@@ -30,7 +30,7 @@ export default function TituloDetalhe() {
     const idioma = idiomaAtual(perfil)
 
     // Conteúdo (já no idioma certo, com fallback pro inglês, via cache-on-first-use)
-    const traduzido = await callFunction('get-translate-title', { titulo_id: Number(id), idioma }).catch(() => null)
+    const traduzido = await callFunction('obter-titulo-traduzido', { titulo_id: Number(id), idioma }).catch(() => null)
 
     const { data: base } = await supabase
       .from('titulo')
@@ -56,7 +56,11 @@ export default function TituloDetalhe() {
       setEpisodios(eps ?? [])
 
       if (user) {
-        const { data: watched } = await supabase.from('watched_episode').select('episode_id').eq('user_id', user.id)
+        const { data: watched } = await supabase
+          .from('watched_episode')
+          .select('episode_id')
+          .eq('user_id', user.id)
+          .in('episode_id', (eps ?? []).map((e) => e.id))
         setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
       }
     } else {
