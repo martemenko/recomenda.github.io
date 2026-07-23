@@ -30,7 +30,7 @@ export default function TituloDetalhe() {
     const idioma = idiomaAtual(perfil)
 
     // Conteúdo (já no idioma certo, com fallback pro inglês, via cache-on-first-use)
-    const traduzido = await callFunction('obter-titulo-traduzido', { titulo_id: Number(id), idioma }).catch(() => null)
+    const traduzido = await callFunction('get-translate-title', { titulo_id: Number(id), idioma }).catch(() => null)
 
     const { data: base } = await supabase
       .from('titulo')
