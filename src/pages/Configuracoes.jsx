@@ -326,9 +326,11 @@ export default function Configuracoes() {
         const { nomeSerie, episodios: listaEpisodios } = grupo
         processados++
         setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
-        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeSerie}" (Série)...`)
+        
+        let nomeExibicao = nomeSerie;
+        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Série)...`)
 
-        console.log(`[Importador] Processando "${nomeSerie}" (TVDB: ${tvdbId}) com ${listaEpisodios.length} episódios.`);
+        console.log(`[Importador] Processando "${nomeExibicao}" (TVDB: ${tvdbId}) com ${listaEpisodios.length} episódios.`);
 
         let tmdbIdNum = null
 
@@ -339,41 +341,45 @@ export default function Configuracoes() {
           })
 
           if (erroTvdb) {
-            console.error(`[Importador] Erro na função 'tvdb-search' para "${nomeSerie}" (TVDB: ${tvdbId}):`, erroTvdb)
+            console.error(`[Importador] Erro na função 'tvdb-search' para "${nomeExibicao}" (TVDB: ${tvdbId}):`, erroTvdb)
           } else if (tvdbData?.resultado?.tmdb_id) {
             tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
-            console.log(`[Importador] ID TVDB ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
+            if (tvdbData.resultado.nome) {
+              nomeExibicao = tvdbData.resultado.nome; // Atualiza para o nome real resolvido do TMDB
+              setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Série)...`)
+            }
+            console.log(`[Importador] ID TVDB ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum} ("${nomeExibicao}")`)
           }
         } catch (e) {
-          console.error(`[Importador] Erro de rede/CORS na rota de ID para "${nomeSerie}":`, e)
+          console.error(`[Importador] Erro de rede/CORS na rota de ID para "${nomeExibicao}":`, e)
         }
 
         // 2. Fallback por Nome se a função de de/para falhou (por CORS ou ID não mapeado)
-        if (!tmdbIdNum && nomeSerie && !nomeSerie.startsWith('Série (ID:')) {
+        if (!tmdbIdNum && nomeExibicao && !nomeExibicao.startsWith('Série (ID:')) {
           try {
-            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para "${nomeSerie}"...`)
+            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para "${nomeExibicao}"...`)
             const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
-              body: { query: nomeSerie },
+              body: { query: nomeExibicao },
             })
 
             if (erroBusca) {
-              console.error(`[Importador] Erro ao buscar por nome "${nomeSerie}":`, erroBusca)
+              console.error(`[Importador] Erro ao buscar por nome "${nomeExibicao}":`, erroBusca)
             } else {
               const melhor = buscaData?.results?.[0]
               if (melhor?.tmdb_id) {
                 tmdbIdNum = Number(melhor.tmdb_id)
-                console.log(`[Importador] Recuperado com sucesso via nome para "${nomeSerie}". TMDB ID: ${tmdbIdNum}`)
+                console.log(`[Importador] Recuperado com sucesso via nome para "${nomeExibicao}". TMDB ID: ${tmdbIdNum}`)
               } else {
-                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa por nome: "${nomeSerie}"`)
+                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa por nome: "${nomeExibicao}"`)
               }
             }
           } catch (e) {
-            console.error(`[Importador] Exceção no fallback para "${nomeSerie}":`, e)
+            console.error(`[Importador] Exceção no fallback para "${nomeExibicao}":`, e)
           }
         }
 
         if (!tmdbIdNum) {
-          console.warn(`[Importador] TMDB ID não encontrado para a série "${nomeSerie}" (TVDB: ${tvdbId}). Pulando série.`)
+          console.warn(`[Importador] TMDB ID não encontrado para a série "${nomeExibicao}" (TVDB: ${tvdbId}). Pulando série.`)
           continue
         }
 
@@ -383,7 +389,7 @@ export default function Configuracoes() {
           body: { tmdb_id: tmdbIdNum, media_type: 'tv' },
         })
         if (erroAdd) { 
-          console.error(`[Importador] Erro ao adicionar o título "${nomeSerie}" (TMDB: ${tmdbIdNum}):`, erroAdd)
+          console.error(`[Importador] Erro ao adicionar o título "${nomeExibicao}" (TMDB: ${tmdbIdNum}):`, erroAdd)
           continue 
         }
 
@@ -393,11 +399,11 @@ export default function Configuracoes() {
           .eq('titulo_id', tmdbIdNum)
 
         if (erroEps) {
-          console.error(`[Importador] Erro ao carregar episódios de "${nomeSerie}" do banco:`, erroEps)
+          console.error(`[Importador] Erro ao carregar episódios de "${nomeExibicao}" do banco:`, erroEps)
         }
 
         if (!episodiosBanco || episodiosBanco.length === 0) {
-          console.warn(`[Importador] Nenhum episódio da série "${nomeSerie}" foi retornado pelo banco após a ingestão.`)
+          console.warn(`[Importador] Nenhum episódio da série "${nomeExibicao}" foi retornado pelo banco após a ingestão.`)
           continue
         }
 
@@ -413,7 +419,7 @@ export default function Configuracoes() {
           }
         }
 
-        console.log(`[Importador] "${nomeSerie}": Encontrados ${idsParaMarcar.length} de ${listaEpisodios.length} episódios correspondentes no banco.`);
+        console.log(`[Importador] "${nomeExibicao}": Encontrados ${idsParaMarcar.length} de ${listaEpisodios.length} episódios correspondentes no banco.`);
 
         if (idsParaMarcar.length > 0) {
           const payload = idsParaMarcar.map((epId) => ({
@@ -426,7 +432,7 @@ export default function Configuracoes() {
             .upsert(payload, { onConflict: 'user_id,episode_id' })
 
           if (erroUpsertWatched) {
-            console.error(`[Importador] Erro ao registrar episódios assistidos de "${nomeSerie}":`, erroUpsertWatched)
+            console.error(`[Importador] Erro ao registrar episódios assistidos de "${nomeExibicao}":`, erroUpsertWatched)
           }
         }
 
@@ -439,7 +445,7 @@ export default function Configuracoes() {
           .in('episode_id', episodiosBanco.map(e => e.id))
 
         if (erroCount) {
-          console.error(`[Importador] Erro ao contar episódios vistos de "${nomeSerie}":`, erroCount)
+          console.error(`[Importador] Erro ao contar episódios vistos de "${nomeExibicao}":`, erroCount)
         }
 
         if (assistidosCount && assistidosCount > 0) {
@@ -449,10 +455,11 @@ export default function Configuracoes() {
             user_id: user.id,
             titulo_id: tmdbIdNum,
             status,
+            favorito: false, // Adicionando favorito: false para satisfazer restrições NOT NULL
           }, { onConflict: 'user_id,titulo_id' })
 
           if (erroUpsertUserItem) {
-            console.error(`[Importador] Erro ao atualizar status de "${nomeSerie}" em user_item:`, erroUpsertUserItem)
+            console.error(`[Importador] Erro ao atualizar status de "${nomeExibicao}" em user_item:`, erroUpsertUserItem)
           }
         }
       }
@@ -462,9 +469,11 @@ export default function Configuracoes() {
         const { tvdbId, nome: nomeFilme } = movie
         processados++
         setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
-        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeFilme}" (Filme)...`)
+        
+        let nomeExibicao = nomeFilme;
+        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Filme)...`)
 
-        console.log(`[Importador] Processando filme "${nomeFilme}" (TVDB: ${tvdbId}).`);
+        console.log(`[Importador] Processando filme "${nomeExibicao}" (TVDB: ${tvdbId}).`);
 
         let tmdbIdNum = null
 
@@ -475,41 +484,45 @@ export default function Configuracoes() {
           })
 
           if (erroTvdb) {
-            console.error(`[Importador] Erro na função 'tvdb-search' para o filme "${nomeFilme}" (TVDB: ${tvdbId}):`, erroTvdb)
+            console.error(`[Importador] Erro na função 'tvdb-search' para o filme "${nomeExibicao}" (TVDB: ${tvdbId}):`, erroTvdb)
           } else if (tvdbData?.resultado?.tmdb_id) {
             tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
-            console.log(`[Importador] Filme TVDB ID ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum}`)
+            if (tvdbData.resultado.nome) {
+              nomeExibicao = tvdbData.resultado.nome; // Atualiza para o nome real resolvido do TMDB
+              setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Filme)...`)
+            }
+            console.log(`[Importador] Filme TVDB ID ${tvdbId} resolvido com sucesso para TMDB: ${tmdbIdNum} ("${nomeExibicao}")`)
           }
         } catch (e) {
-          console.error(`[Importador] Erro de rede/CORS na rota de ID para o filme "${nomeFilme}":`, e)
+          console.error(`[Importador] Erro de rede/CORS na rota de ID para o filme "${nomeExibicao}":`, e)
         }
 
         // 2. Fallback de alta disponibilidade por nome para filme
-        if (!tmdbIdNum && nomeFilme && !nomeFilme.startsWith('Filme (ID:')) {
+        if (!tmdbIdNum && nomeExibicao && !nomeExibicao.startsWith('Filme (ID:')) {
           try {
-            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para o filme "${nomeFilme}"...`)
+            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para o filme "${nomeExibicao}"...`)
             const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
-              body: { query: nomeFilme },
+              body: { query: nomeExibicao },
             })
 
             if (erroBusca) {
-              console.error(`[Importador] Erro ao buscar por nome "${nomeFilme}":`, erroBusca)
+              console.error(`[Importador] Erro ao buscar por nome "${nomeExibicao}":`, erroBusca)
             } else {
               const melhor = buscaData?.results?.find(r => r.media_type === 'movie') || buscaData?.results?.[0]
               if (melhor?.tmdb_id) {
                 tmdbIdNum = Number(melhor.tmdb_id)
-                console.log(`[Importador] Recuperado com sucesso via nome para o filme "${nomeFilme}". TMDB ID: ${tmdbIdNum}`)
+                console.log(`[Importador] Recuperado com sucesso via nome para o filme "${nomeExibicao}". TMDB ID: ${tmdbIdNum}`)
               } else {
-                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa de filme por nome: "${nomeFilme}"`)
+                console.warn(`[Importador] Nenhum resultado no TMDB para a pesquisa de filme por nome: "${nomeExibicao}"`)
               }
             }
           } catch (e) {
-            console.error(`[Importador] Exceção no fallback de filme para "${nomeFilme}":`, e)
+            console.error(`[Importador] Exceção no fallback de filme para "${nomeExibicao}":`, e)
           }
         }
 
         if (!tmdbIdNum) {
-          console.warn(`[Importador] TMDB ID não encontrado para o filme "${nomeFilme}" (TVDB: ${tvdbId}). Pulando filme.`)
+          console.warn(`[Importador] TMDB ID não encontrado para o filme "${nomeExibicao}" (TVDB: ${tvdbId}). Pulando filme.`)
           continue
         }
 
@@ -519,20 +532,21 @@ export default function Configuracoes() {
           body: { tmdb_id: tmdbIdNum, media_type: 'movie' },
         })
         if (erroAdd) { 
-          console.error(`[Importador] Erro ao adicionar o filme "${nomeFilme}" (TMDB: ${tmdbIdNum}):`, erroAdd)
+          console.error(`[Importador] Erro ao adicionar o filme "${nomeExibicao}" (TMDB: ${tmdbIdNum}):`, erroAdd)
           continue 
         }
 
         // Para filmes, atualiza diretamente como "visto" na tabela 'user_item'
-        console.log(`[Importador] Atualizando status de visualização do filme "${nomeFilme}" para "visto"...`);
+        console.log(`[Importador] Atualizando status de visualização do filme "${nomeExibicao}" para "visto"...`);
         const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
           user_id: user.id,
           titulo_id: tmdbIdNum,
           status: 'visto',
+          favorito: false, // Adicionando favorito: false para satisfazer restrições NOT NULL
         }, { onConflict: 'user_id,titulo_id' })
 
         if (erroUpsertUserItem) {
-          console.error(`[Importador] Erro ao atualizar status de "${nomeFilme}" em user_item:`, erroUpsertUserItem)
+          console.error(`[Importador] Erro ao atualizar status de "${nomeExibicao}" em user_item:`, erroUpsertUserItem)
         }
       }
 
