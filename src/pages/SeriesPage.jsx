@@ -70,12 +70,30 @@ export default function SeriesPage() {
     if (erroEpisodios) console.error('Erro ao buscar episode:', erroEpisodios)
     setEpisodiosCache(episodios ?? [])
 
-    const { data: assistidos, error: erroAssistidos } = await supabase
-      .from('watched_episode')
-      .select('episode_id, watched_at')
-      .eq('user_id', user.id)
-      .in('episode_id', (episodios ?? []).map((e) => e.id))
-    if (erroAssistidos) console.error('Erro ao buscar watched_episode:', erroAssistidos)
+    // Busca paginada e filtrada por ID de série para evitar estouro de URL (414) e limite de 1000 linhas
+    let assistidos = []
+    let de = 0
+    const tamanhoPagina = 1000
+
+    while (true) {
+      const { data: paginaAssistidos, error: erroAssistidos } = await supabase
+        .from('watched_episode')
+        .select('episode_id, watched_at, episode!inner(titulo_id)')
+        .eq('user_id', user.id)
+        .in('episode.titulo_id', tituloIds)
+        .range(de, de + tamanhoPagina - 1)
+
+      if (erroAssistidos) {
+        console.error('Erro ao buscar watched_episode:', erroAssistidos)
+        break
+      }
+      
+      if (!paginaAssistidos || paginaAssistidos.length === 0) break
+      assistidos = [...assistidos, ...paginaAssistidos]
+      
+      if (paginaAssistidos.length < tamanhoPagina) break
+      de += tamanhoPagina
+    }
 
     const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
     setAssistidosMapa(novoAssistidosMapa)
