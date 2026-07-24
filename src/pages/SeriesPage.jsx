@@ -61,16 +61,35 @@ export default function SeriesPage() {
       return
     }
 
-    const { data: episodios, error: erroEpisodios } = await supabase
-      .from('episode')
-      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-      .in('titulo_id', tituloIds)
-      .order('season_number', { ascending: true })
-      .order('episode_number', { ascending: true })
-    if (erroEpisodios) console.error('Erro ao buscar episode:', erroEpisodios)
-    setEpisodiosCache(episodios ?? [])
+    // --- Busca paginada de todos os episódios cadastrados das séries seguidas ---
+    let episodiosCompletos = []
+    let deEp = 0
+    const tamanhoPaginaEp = 1000
 
-    // Busca paginada de todos os episódios assistidos do usuário (sem limite de 1000 linhas e sem URL longa)
+    while (true) {
+      const { data: paginaEps, error: erroEpisodios } = await supabase
+        .from('episode')
+        .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+        .in('titulo_id', tituloIds)
+        .order('titulo_id', { ascending: true }) // Ordena para garantir consistência na paginação
+        .order('season_number', { ascending: true })
+        .order('episode_number', { ascending: true })
+        .range(deEp, deEp + tamanhoPaginaEp - 1)
+
+      if (erroEpisodios) {
+        console.error('Erro ao buscar episode (paginado):', erroEpisodios)
+        break
+      }
+      
+      if (!paginaEps || paginaEps.length === 0) break
+      episodiosCompletos = [...episodiosCompletos, ...paginaEps]
+      
+      if (paginaEps.length < tamanhoPaginaEp) break
+      deEp += tamanhoPaginaEp
+    }
+    setEpisodiosCache(episodiosCompletos)
+
+    // --- Busca paginada de todos os episódios assistidos do usuário ---
     let assistidos = []
     let de = 0
     const tamanhoPagina = 1000
@@ -83,7 +102,7 @@ export default function SeriesPage() {
         .range(de, de + tamanhoPagina - 1)
 
       if (erroAssistidos) {
-        console.error('Erro ao buscar watched_episode:', erroAssistidos)
+        console.error('Erro ao buscar watched_episode (paginado):', erroAssistidos)
         break
       }
       
@@ -97,7 +116,7 @@ export default function SeriesPage() {
     const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
     setAssistidosMapa(novoAssistidosMapa)
 
-    recalcularBuckets(itens, episodios ?? [], novoAssistidosMapa)
+    recalcularBuckets(itens, episodiosCompletos, novoAssistidosMapa)
 
     const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
     const hoje = new Date()
