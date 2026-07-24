@@ -10,6 +10,64 @@ import EpisodioRow from '../components/EpisodioRow'
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
 
+// Função auxiliar para buscar episódios de forma paginada e segura contra estouro de URL
+async function obterEpisodios(tituloIds) {
+  if (!tituloIds || tituloIds.length === 0) return []
+  let eps = []
+  let de = 0
+  const tamanho = 1000
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('episode')
+      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+      .in('titulo_id', tituloIds)
+      .order('titulo_id', { ascending: true })
+      .order('season_number', { ascending: true })
+      .order('episode_number', { ascending: true })
+      .range(de, de + tamanho - 1)
+
+    if (error) {
+      console.error('Erro ao buscar episode (paginado):', error)
+      break
+    }
+    
+    if (!data || data.length === 0) break
+    eps = [...eps, ...data]
+    
+    if (data.length < tamanho) break
+    de += tamanho
+  }
+  return eps
+}
+
+// Função auxiliar para buscar episódios assistidos de forma paginada
+async function obterAssistidos(userId) {
+  let list = []
+  let de = 0
+  const tamanho = 1000
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('watched_episode')
+      .select('episode_id, watched_at')
+      .eq('user_id', userId)
+      .range(de, de + tamanho - 1)
+
+    if (error) {
+      console.error('Erro ao buscar watched_episode (paginado):', error)
+      break
+    }
+    
+    if (!data || data.length === 0) break
+    list = [...list, ...data]
+    
+    if (data.length < tamanho) break
+    de += tamanho
+  }
+  return list
+}
+
 export default function SeriesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -61,57 +119,28 @@ export default function SeriesPage() {
       return
     }
 
-    // --- Busca paginada de todos os episódios cadastrados das séries seguidas ---
-    let episodiosCompletos = []
-    let deEp = 0
-    const tamanhoPaginaEp = 1000
+    // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
+    const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
+    const hoje = new Date()
 
-    while (true) {
-      const { data: paginaEps, error: erroEpisodios } = await supabase
+    // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
+    const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
+      obterEpisodios(activeTituloIds),
+      obterAssistidos(user.id),
+      supabase
         .from('episode')
         .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-        .in('titulo_id', tituloIds)
-        .order('titulo_id', { ascending: true }) // Ordena para garantir consistência na paginação
-        .order('season_number', { ascending: true })
-        .order('episode_number', { ascending: true })
-        .range(deEp, deEp + tamanhoPaginaEp - 1)
+        .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
+        .gt('launch_date', hoje.toISOString().slice(0, 10))
+        .order('launch_date', { ascending: true })
+        .then(res => {
+          if (res.error) console.error('Erro ao buscar em breve:', res.error)
+          return res.data ?? []
+        }),
+      carregarHistorico() // Processa a carga de histórico também em paralelo
+    ])
 
-      if (erroEpisodios) {
-        console.error('Erro ao buscar episode (paginado):', erroEpisodios)
-        break
-      }
-      
-      if (!paginaEps || paginaEps.length === 0) break
-      episodiosCompletos = [...episodiosCompletos, ...paginaEps]
-      
-      if (paginaEps.length < tamanhoPaginaEp) break
-      deEp += tamanhoPaginaEp
-    }
     setEpisodiosCache(episodiosCompletos)
-
-    // --- Busca paginada de todos os episódios assistidos do usuário ---
-    let assistidos = []
-    let de = 0
-    const tamanhoPagina = 1000
-
-    while (true) {
-      const { data: pagina, error: erroAssistidos } = await supabase
-        .from('watched_episode')
-        .select('episode_id, watched_at')
-        .eq('user_id', user.id)
-        .range(de, de + tamanhoPagina - 1)
-
-      if (erroAssistidos) {
-        console.error('Erro ao buscar watched_episode (paginado):', erroAssistidos)
-        break
-      }
-      
-      if (!pagina || pagina.length === 0) break
-      assistidos = [...assistidos, ...pagina]
-      
-      if (pagina.length < tamanhoPagina) break
-      de += tamanhoPagina
-    }
 
     const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
     setAssistidosMapa(novoAssistidosMapa)
@@ -119,17 +148,8 @@ export default function SeriesPage() {
     recalcularBuckets(itens, episodiosCompletos, novoAssistidosMapa)
 
     const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
-    const hoje = new Date()
-    const { data: futurosBrutos, error: erroFuturos } = await supabase
-      .from('episode')
-      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-      .in('titulo_id', tituloIds)
-      .gt('launch_date', hoje.toISOString().slice(0, 10))
-      .order('launch_date', { ascending: true })
-    if (erroFuturos) console.error('Erro ao buscar em breve:', erroFuturos)
     setEmBreve((futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) })))
 
-    await carregarHistorico()
     setCarregando(false)
   }
 
