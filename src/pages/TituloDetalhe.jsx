@@ -7,6 +7,17 @@ import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 
+const STATUS_LABELS = { quero_ver: 'Quero ver', vendo: 'Vendo agora', visto: 'Já vi', interrompida: 'Interrompida' }
+
+// Opções do menu de status pra séries - "Interrompida" tira a série das listas
+// de "assistir a seguir" da SeriesPage, sem apagar o histórico já assistido.
+const OPCOES_STATUS_SERIE = [
+  { value: 'quero_ver', label: 'Quero ver' },
+  { value: 'vendo', label: 'Vendo agora' },
+  { value: 'visto', label: 'Já vi' },
+  { value: 'interrompida', label: 'Interrompida' },
+]
+
 export default function TituloDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -21,6 +32,7 @@ export default function TituloDetalhe() {
   const [assistidos, setAssistidos] = useState(new Set())
   const [temporadaAberta, setTemporadaAberta] = useState(null)
   const [confirmacao, setConfirmacao] = useState(null)
+  const [menuStatusAberto, setMenuStatusAberto] = useState(false)
 
   useEffect(() => {
     carregar()
@@ -89,6 +101,17 @@ export default function TituloDetalhe() {
 
   async function adicionar(status = 'quero_ver') {
     await callFunction('adicionar-titulo', { tmdb_id: Number(id), media_type: mediaType, status })
+    carregar()
+  }
+
+  async function mudarStatus(novoStatus) {
+    setMenuStatusAberto(false)
+    await supabase.from('user_item').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      status: novoStatus,
+      favorito: userItem?.favorito ?? false,
+    })
     carregar()
   }
 
@@ -225,9 +248,16 @@ export default function TituloDetalhe() {
             <button onClick={() => adicionar()} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
               + Adicionar à lista
             </button>
+          ) : mediaType === 'tv' ? (
+            <button
+              onClick={() => setMenuStatusAberto(true)}
+              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
+            >
+              {STATUS_LABELS[userItem.status] ?? userItem.status}
+            </button>
           ) : (
             <div className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium">
-              {{ quero_ver: 'Quero ver', vendo: 'Vendo agora', visto: 'Já vi' }[userItem.status]}
+              {STATUS_LABELS[userItem.status] ?? userItem.status}
             </div>
           )}
 
@@ -338,6 +368,37 @@ export default function TituloDetalhe() {
                 Sim
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {menuStatusAberto && (
+        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={() => setMenuStatusAberto(false)}>
+          <div
+            className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs text-muted font-mono uppercase mb-2 px-1">Status da série</div>
+            <div className="flex flex-col gap-1">
+              {OPCOES_STATUS_SERIE.map((opcao) => (
+                <button
+                  key={opcao.value}
+                  onClick={() => mudarStatus(opcao.value)}
+                  className={`flex items-center justify-between px-3 py-3 rounded-xl text-sm font-display font-medium ${
+                    userItem?.status === opcao.value ? 'bg-teal/15 text-teal' : 'text-ink'
+                  }`}
+                >
+                  {opcao.label}
+                  {userItem?.status === opcao.value && <Check size={16} />}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setMenuStatusAberto(false)}
+              className="w-full mt-2 py-2.5 text-sm text-muted font-display font-medium"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}

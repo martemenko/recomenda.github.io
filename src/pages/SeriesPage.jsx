@@ -162,8 +162,18 @@ export default function SeriesPage() {
     const semTempo = []
 
     for (const item of itens.filter((i) => i.status === 'vendo')) {
+      // eps já vem ordenado por temporada/episódio (query em obterEpisodios). Acha o
+      // episódio assistido "mais adiante" na ordem e só considera "próximo" a partir
+      // dali - assim quem começou a ver do meio (ex: temporada 6) não recebe de volta
+      // o episódio 1 da temporada 1, que nunca foi assistido mas já ficou pra trás.
       const eps = episodios.filter((e) => e.titulo_id === item.titulo_id)
-      const proximo = eps.find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
+      let indiceInicial = 0
+      for (let i = eps.length - 1; i >= 0; i--) {
+        if (assistidosAtual.has(eps[i].id)) { indiceInicial = i + 1; break }
+      }
+      const proximo = eps
+        .slice(indiceInicial)
+        .find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
       if (!proximo) continue
 
       const linha = {
