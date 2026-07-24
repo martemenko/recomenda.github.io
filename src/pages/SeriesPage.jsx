@@ -70,17 +70,16 @@ export default function SeriesPage() {
     if (erroEpisodios) console.error('Erro ao buscar episode:', erroEpisodios)
     setEpisodiosCache(episodios ?? [])
 
-    // Busca paginada e filtrada por ID de série para evitar estouro de URL (414) e limite de 1000 linhas
+    // Busca paginada de todos os episódios assistidos do usuário (sem limite de 1000 linhas e sem URL longa)
     let assistidos = []
     let de = 0
     const tamanhoPagina = 1000
 
     while (true) {
-      const { data: paginaAssistidos, error: erroAssistidos } = await supabase
+      const { data: pagina, error: erroAssistidos } = await supabase
         .from('watched_episode')
-        .select('episode_id, watched_at, episode!inner(titulo_id)')
+        .select('episode_id, watched_at')
         .eq('user_id', user.id)
-        .in('episode.titulo_id', tituloIds)
         .range(de, de + tamanhoPagina - 1)
 
       if (erroAssistidos) {
@@ -88,10 +87,10 @@ export default function SeriesPage() {
         break
       }
       
-      if (!paginaAssistidos || paginaAssistidos.length === 0) break
-      assistidos = [...assistidos, ...paginaAssistidos]
+      if (!pagina || pagina.length === 0) break
+      assistidos = [...assistidos, ...pagina]
       
-      if (paginaAssistidos.length < tamanhoPagina) break
+      if (pagina.length < tamanhoPagina) break
       de += tamanhoPagina
     }
 
