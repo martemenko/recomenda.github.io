@@ -28,6 +28,62 @@ function carregarJSZip() {
   })
 }
 
+// Acha a coluna de "assistido" (true/false) sem confundir com "watched_at"
+// (timestamp) - o TV Time exporta as duas no mesmo CSV e "watched_at" aparece
+// antes de "is_watched" na ordem das colunas, então um includes('watched')
+// ingênuo pega a coluna errada e acaba marcando tudo como não assistido.
+function acharIndiceAssistido(headers) {
+  const exato = headers.findIndex((h) => h === 'is_watched' || h === 'iswatched' || h === 'watched')
+  if (exato >= 0) return exato
+  return headers.findIndex((h) => h.includes('watched') && !h.endsWith('_at') && !h.includes('date'))
+}
+
+// Resolve o tmdb_id de um título a partir do que o TV Time exportou (tvdb_id
+// e/ou imdb_id, já que filmes não vêm com tmdb_id direto), com fallback pra
+// busca por nome quando a busca por ID externo não acha nada.
+async function resolverTmdbId({ tmdbId, tvdbId, imdbId, nomeInicial, mediaType, prefixoIdDesconhecido }) {
+  let tmdbIdNum = tmdbId ? Number(tmdbId) : null
+  let nomeExibicao = nomeInicial
+
+  if (!tmdbIdNum && (tvdbId || imdbId)) {
+    try {
+      const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('tvdb-search', {
+        body: { tvdb_id: tvdbId, imdb_id: imdbId, media_type: mediaType },
+      })
+
+      if (erroTvdb) {
+        console.error(`[Importador] Erro na função 'tvdb-search' para "${nomeExibicao}" (TVDB: ${tvdbId}, IMDB: ${imdbId}):`, erroTvdb)
+      } else if (tvdbData?.resultado?.tmdb_id) {
+        tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
+        if (tvdbData.resultado.nome) nomeExibicao = tvdbData.resultado.nome
+      }
+    } catch (e) {
+      console.error(`[Importador] Erro de rede/CORS na rota de ID para "${nomeExibicao}":`, e)
+    }
+  }
+
+  if (!tmdbIdNum && nomeExibicao && !nomeExibicao.startsWith(prefixoIdDesconhecido)) {
+    try {
+      const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
+        body: { query: nomeExibicao },
+      })
+
+      if (erroBusca) {
+        console.error(`[Importador] Erro ao buscar por nome "${nomeExibicao}":`, erroBusca)
+      } else {
+        const melhor = mediaType === 'movie'
+          ? (buscaData?.results?.find((r) => r.media_type === 'movie') || buscaData?.results?.[0])
+          : buscaData?.results?.[0]
+        if (melhor?.tmdb_id) tmdbIdNum = Number(melhor.tmdb_id)
+      }
+    } catch (e) {
+      console.error(`[Importador] Exceção no fallback para "${nomeExibicao}":`, e)
+    }
+  }
+
+  return { tmdbIdNum, nomeExibicao }
+}
+
 export default function Configuracoes() {
   const navigate = useNavigate()
   const [perfilPrivado, setPerfilPrivado] = useState(false)
@@ -226,7 +282,7 @@ export default function Configuracoes() {
           const sIdIdx = headers.findIndex(h => h === 'series_tvdb_id' || h.includes('series_tvdb'))
           const seasonIdx = headers.findIndex(h => h === 'season' || h.includes('season'))
           const episodeIdx = headers.findIndex(h => h === 'episode' || h.includes('episode'))
-          const isWatchedIdx = headers.findIndex(h => h === 'is_watched' || h.includes('watched'))
+          const isWatchedIdx = acharIndiceAssistido(headers)
 
           if (sIdIdx < 0 || seasonIdx < 0 || episodeIdx < 0) {
             throw new Error('As colunas obrigatórias do TV Time não foram identificadas no CSV.')
@@ -277,11 +333,15 @@ export default function Configuracoes() {
                 if (!isWatched) continue
 
                 const tvdbId = m.tvdb_id || m.tvdbId
+                const imdbId = m.imdb_id || m.imdbId
+                const tmdbId = m.tmdb_id || m.tmdbId
                 const title = m.title || m.name
-                if (tvdbId) {
+                if (tvdbId || imdbId || tmdbId) {
                   moviesList.push({
-                    tvdbId: String(tvdbId).trim(),
-                    nome: String(title || `Filme (ID: ${tvdbId})`).trim()
+                    tvdbId: tvdbId ? String(tvdbId).trim() : null,
+                    imdbId: imdbId ? String(imdbId).trim() : null,
+                    tmdbId: tmdbId ? String(tmdbId).trim() : null,
+                    nome: String(title || `Filme (ID: ${tvdbId || imdbId || tmdbId})`).trim()
                   })
                 }
               }
@@ -293,14 +353,16 @@ export default function Configuracoes() {
           const movieRows = parseCSV(moviesContent)
           if (movieRows.length > 1) {
             const headers = movieRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
-            const idIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
+            const tvdbIdIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
+            const imdbIdIdx = headers.findIndex(h => h === 'imdb_id' || h.includes('imdb'))
+            const tmdbIdIdx = headers.findIndex(h => h === 'tmdb_id' || h.includes('tmdb'))
             const titleIdx = headers.findIndex(h => h === 'title' || h === 'name' || h.includes('titulo') || h.includes('título'))
-            const isWatchedIdx = headers.findIndex(h => h === 'is_watched' || h.includes('watched'))
+            const isWatchedIdx = acharIndiceAssistido(headers)
 
-            if (idIdx >= 0 && titleIdx >= 0) {
+            if ((tvdbIdIdx >= 0 || imdbIdIdx >= 0 || tmdbIdIdx >= 0) && titleIdx >= 0) {
               for (let i = 1; i < movieRows.length; i++) {
                 const row = movieRows[i]
-                
+
                 let isWatched = true
                 if (isWatchedIdx >= 0) {
                   const val = String(row[isWatchedIdx] ?? '').toLowerCase().trim()
@@ -308,12 +370,16 @@ export default function Configuracoes() {
                 }
                 if (!isWatched) continue
 
-                const tvdbIdVal = row[idIdx]?.replace(/^["']|["']$/g, '').trim()
+                const tvdbIdVal = tvdbIdIdx >= 0 ? row[tvdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
+                const imdbIdVal = imdbIdIdx >= 0 ? row[imdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
+                const tmdbIdVal = tmdbIdIdx >= 0 ? row[tmdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
                 const titleVal = row[titleIdx]?.replace(/^["']|["']$/g, '').trim()
-                if (tvdbIdVal) {
+                if (tvdbIdVal || imdbIdVal || tmdbIdVal) {
                   moviesList.push({
-                    tvdbId: tvdbIdVal,
-                    nome: titleVal || `Filme (ID: ${tvdbIdVal})`
+                    tvdbId: tvdbIdVal || null,
+                    imdbId: imdbIdVal || null,
+                    tmdbId: tmdbIdVal || null,
+                    nome: titleVal || `Filme (ID: ${tvdbIdVal || imdbIdVal || tmdbIdVal})`
                   })
                 }
               }
@@ -322,12 +388,98 @@ export default function Configuracoes() {
         }
       }
 
+      // 4. Processar o arquivo de listas customizadas (tvtime-lists-)
+      const listsFileKey = files.find(name => name.includes('tvtime-lists-'))
+      const listasMap = new Map() // list_id -> { nome, itens: [{tvdbId, imdbId, tmdbId, nome, mediaType}] }
+
+      // TV Time não documenta os valores exatos de item_type - assume que qualquer
+      // coisa que mencione "movie/filme/film" é filme, e o resto é série.
+      function tipoMidiaItemLista(itemType) {
+        const v = String(itemType ?? '').trim().toLowerCase()
+        return v.includes('movie') || v.includes('filme') || v.includes('film') ? 'movie' : 'tv'
+      }
+
+      if (listsFileKey) {
+        setProgresso('Lendo arquivo de listas...')
+        const listsContent = (await zip.files[listsFileKey].async('string')).replace(/^﻿/, '')
+        const isListsJson = listsFileKey.endsWith('.json') || listsContent.trim().startsWith('[') || listsContent.trim().startsWith('{')
+
+        if (isListsJson) {
+          try {
+            const parsedLists = JSON.parse(listsContent)
+            if (Array.isArray(parsedLists)) {
+              for (const l of parsedLists) {
+                const listId = l.list_id || l.listId
+                const listName = l.list_name || l.listName
+                const tvdbId = l.tvdb_id || l.tvdbId
+                const imdbId = l.imdb_id || l.imdbId
+                const tmdbId = l.tmdb_id || l.tmdbId
+                const nome = l.name || l.title
+                if (!listId || !listName || (!tvdbId && !imdbId && !tmdbId)) continue
+
+                const listIdStr = String(listId).trim()
+                if (!listasMap.has(listIdStr)) {
+                  listasMap.set(listIdStr, { nome: String(listName).trim(), itens: [] })
+                }
+                listasMap.get(listIdStr).itens.push({
+                  tvdbId: tvdbId ? String(tvdbId).trim() : null,
+                  imdbId: imdbId ? String(imdbId).trim() : null,
+                  tmdbId: tmdbId ? String(tmdbId).trim() : null,
+                  nome: String(nome || `Título (ID: ${tvdbId || imdbId || tmdbId})`).trim(),
+                  mediaType: tipoMidiaItemLista(l.item_type || l.itemType),
+                })
+              }
+            }
+          } catch (e) {
+            console.error('[Importador] Erro ao processar JSON de listas:', e)
+          }
+        } else {
+          const listRows = parseCSV(listsContent)
+          if (listRows.length > 1) {
+            const headers = listRows[0].map(h => h.replace(/^﻿/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
+            const listIdIdx = headers.findIndex(h => h === 'list_id')
+            const listNameIdx = headers.findIndex(h => h === 'list_name')
+            const itemTypeIdx = headers.findIndex(h => h === 'item_type')
+            const tvdbIdIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
+            const imdbIdIdx = headers.findIndex(h => h === 'imdb_id' || h.includes('imdb'))
+            const tmdbIdIdx = headers.findIndex(h => h === 'tmdb_id' || h.includes('tmdb'))
+            const nameIdx = headers.findIndex(h => h === 'name' || h === 'title')
+
+            if (listIdIdx >= 0 && listNameIdx >= 0 && (tvdbIdIdx >= 0 || imdbIdIdx >= 0 || tmdbIdIdx >= 0)) {
+              for (let i = 1; i < listRows.length; i++) {
+                const row = listRows[i]
+                const listIdVal = row[listIdIdx]?.replace(/^["']|["']$/g, '').trim()
+                const listNameVal = row[listNameIdx]?.replace(/^["']|["']$/g, '').trim()
+                const tvdbIdVal = tvdbIdIdx >= 0 ? row[tvdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
+                const imdbIdVal = imdbIdIdx >= 0 ? row[imdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
+                const tmdbIdVal = tmdbIdIdx >= 0 ? row[tmdbIdIdx]?.replace(/^["']|["']$/g, '').trim() : null
+                const nomeVal = nameIdx >= 0 ? row[nameIdx]?.replace(/^["']|["']$/g, '').trim() : null
+
+                if (!listIdVal || !listNameVal || (!tvdbIdVal && !imdbIdVal && !tmdbIdVal)) continue
+
+                if (!listasMap.has(listIdVal)) {
+                  listasMap.set(listIdVal, { nome: listNameVal, itens: [] })
+                }
+                listasMap.get(listIdVal).itens.push({
+                  tvdbId: tvdbIdVal || null,
+                  imdbId: imdbIdVal || null,
+                  tmdbId: tmdbIdVal || null,
+                  nome: nomeVal || `Título (ID: ${tvdbIdVal || imdbIdVal || tmdbIdVal})`,
+                  mediaType: tipoMidiaItemLista(row[itemTypeIdx]),
+                })
+              }
+            }
+          }
+        }
+      }
+
       const totalSeries = seriesMap.size
       const totalFilmes = moviesList.length
-      const totalGeral = totalSeries + totalFilmes
+      const totalItensListas = [...listasMap.values()].reduce((soma, l) => soma + l.itens.length, 0)
+      const totalGeral = totalSeries + totalFilmes + totalItensListas
 
       if (totalGeral === 0) {
-        throw new Error('Nenhum episódio ou filme marcado como assistido foi identificado nos arquivos do ZIP.')
+        throw new Error('Nenhum episódio, filme ou item de lista foi identificado nos arquivos do ZIP.')
       }
 
       let processados = 0
@@ -456,7 +608,7 @@ export default function Configuracoes() {
           if (assistidosCount >= totalEpisodiosSerie) {
             status = 'visto'
           } else if (tvtimeStatus === 'stopped') {
-            status = 'quero_ver' // Define como 'quero_ver' se a série estiver interrompida (stopped) no TV Time [1, 2]
+            status = 'interrompida' // Série marcada como "stopped" no TV Time some da lista de "assistir a seguir"
           }
           
           const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
@@ -474,64 +626,31 @@ export default function Configuracoes() {
 
       // --- Loop 2: Processamento de Filmes ---
       for (const movie of moviesList) {
-        const { tvdbId, nome: nomeFilme } = movie
+        const { tmdbId, tvdbId, imdbId, nome: nomeFilme } = movie
         processados++
         setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
-        
-        let nomeExibicao = nomeFilme;
-        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Filme)...`)
+        setProgresso(`Processando ${processados}/${totalGeral}: "${nomeFilme}" (Filme)...`)
 
-        let tmdbIdNum = null
-
-        try {
-          const { data: tvdbData, error: erroTvdb } = await supabase.functions.invoke('tvdb-search', {
-            body: { tvdb_id: tvdbId },
-          })
-
-          if (erroTvdb) {
-            console.error(`[Importador] Erro na função 'tvdb-search' para o filme "${nomeExibicao}" (TVDB: ${tvdbId}):`, erroTvdb)
-          } else if (tvdbData?.resultado?.tmdb_id) {
-            tmdbIdNum = Number(tvdbData.resultado.tmdb_id)
-            if (tvdbData.resultado.nome) {
-              nomeExibicao = tvdbData.resultado.nome;
-              setProgresso(`Processando ${processados}/${totalGeral}: "${nomeExibicao}" (Filme)...`)
-            }
-          }
-        } catch (e) {
-          console.error(`[Importador] Erro de rede/CORS na rota de ID para o filme "${nomeExibicao}":`, e)
-        }
-
-        if (!tmdbIdNum && nomeExibicao && !nomeExibicao.startsWith('Filme (ID:')) {
-          try {
-            console.log(`[Importador] Recuperação: Buscando por nome no TMDB para o filme "${nomeExibicao}"...`)
-            const { data: buscaData, error: erroBusca } = await supabase.functions.invoke('buscar-titulo', {
-              body: { query: nomeExibicao },
-            })
-
-            if (erroBusca) {
-              console.error(`[Importador] Erro ao buscar por nome "${nomeExibicao}":`, erroBusca)
-            } else {
-              const melhor = buscaData?.results?.find(r => r.media_type === 'movie') || buscaData?.results?.[0]
-              if (melhor?.tmdb_id) {
-                tmdbIdNum = Number(melhor.tmdb_id)
-              }
-            }
-          } catch (e) {
-            console.error(`[Importador] Exceção no fallback de filme para "${nomeExibicao}":`, e)
-          }
-        }
+        const { tmdbIdNum, nomeExibicao } = await resolverTmdbId({
+          tmdbId,
+          tvdbId,
+          imdbId,
+          nomeInicial: nomeFilme,
+          mediaType: 'movie',
+          prefixoIdDesconhecido: 'Filme (ID:',
+        })
 
         if (!tmdbIdNum) {
-          console.warn(`[Importador] TMDB ID não encontrado para o filme "${nomeExibicao}" (TVDB: ${tvdbId}). Pulando filme.`)
+          console.warn(`[Importador] TMDB ID não encontrado para o filme "${nomeExibicao}" (TVDB: ${tvdbId}, IMDB: ${imdbId}). Pulando filme.`)
           continue
         }
 
         const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
           body: { tmdb_id: tmdbIdNum, media_type: 'movie' },
         })
-        if (erroAdd) { 
+        if (erroAdd) {
           console.error(`[Importador] Erro ao adicionar o filme "${nomeExibicao}" (TMDB: ${tmdbIdNum}):`, erroAdd)
-          continue 
+          continue
         }
 
         const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
@@ -543,6 +662,84 @@ export default function Configuracoes() {
 
         if (erroUpsertUserItem) {
           console.error(`[Importador] Erro ao atualizar status de "${nomeExibicao}" em user_item:`, erroUpsertUserItem)
+        }
+      }
+
+      // --- Loop 3: Processamento de Listas customizadas ---
+      for (const [, lista] of listasMap.entries()) {
+        const { nome: nomeLista, itens } = lista
+
+        const { data: listaExistente, error: erroBuscaLista } = await supabase
+          .from('lista')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('nome', nomeLista)
+          .maybeSingle()
+        if (erroBuscaLista) console.error(`[Importador] Erro ao buscar lista "${nomeLista}":`, erroBuscaLista)
+
+        let listaId = listaExistente?.id ?? null
+        if (!listaId) {
+          const { data: listaCriada, error: erroCriarLista } = await supabase
+            .from('lista')
+            .insert({ user_id: user.id, nome: nomeLista })
+            .select('id')
+            .single()
+          if (erroCriarLista) {
+            console.error(`[Importador] Erro ao criar lista "${nomeLista}":`, erroCriarLista)
+            processados += itens.length
+            continue
+          }
+          listaId = listaCriada.id
+        }
+
+        for (const item of itens) {
+          processados++
+          setPorcentagemProgresso(Math.round((processados / totalGeral) * 100))
+          setProgresso(`Processando ${processados}/${totalGeral}: "${item.nome}" (Lista "${nomeLista}")...`)
+
+          const { tmdbIdNum, nomeExibicao } = await resolverTmdbId({
+            tmdbId: item.tmdbId,
+            tvdbId: item.tvdbId,
+            imdbId: item.imdbId,
+            nomeInicial: item.nome,
+            mediaType: item.mediaType,
+            prefixoIdDesconhecido: 'Título (ID:',
+          })
+
+          if (!tmdbIdNum) {
+            console.warn(`[Importador] TMDB ID não encontrado para "${nomeExibicao}" da lista "${nomeLista}". Pulando item.`)
+            continue
+          }
+
+          // Garante que o título exista no catálogo sem tocar no status de
+          // assistido do usuário - fazer parte de uma lista customizada não
+          // significa "vendo"/"visto"/"quero ver".
+          const { data: tituloExistente } = await supabase.from('titulo').select('id').eq('id', tmdbIdNum).maybeSingle()
+          if (!tituloExistente) {
+            const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
+              body: { tmdb_id: tmdbIdNum, media_type: item.mediaType, status: 'quero_ver' },
+            })
+            if (erroAdd) {
+              console.error(`[Importador] Erro ao adicionar título "${nomeExibicao}" (TMDB: ${tmdbIdNum}) da lista "${nomeLista}":`, erroAdd)
+              continue
+            }
+          }
+
+          const { data: itemExistente } = await supabase
+            .from('lista_item')
+            .select('titulo_id')
+            .eq('lista_id', listaId)
+            .eq('titulo_id', tmdbIdNum)
+            .maybeSingle()
+
+          if (!itemExistente) {
+            const { error: erroInsertItem } = await supabase
+              .from('lista_item')
+              .insert({ lista_id: listaId, titulo_id: tmdbIdNum })
+            if (erroInsertItem) {
+              console.error(`[Importador] Erro ao adicionar "${nomeExibicao}" à lista "${nomeLista}":`, erroInsertItem)
+            }
+          }
         }
       }
 
