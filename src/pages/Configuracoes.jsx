@@ -101,6 +101,7 @@ export default function Configuracoes() {
       )
       
       const seriesNamesMap = new Map()
+      const seriesStatusMap = new Map() // Armazena o status original (continuing, stopped, up_to_date)
       const seriesMap = new Map()
 
       if (seriesFileKey) {
@@ -114,8 +115,12 @@ export default function Configuracoes() {
               for (const s of seriesList) {
                 const tvdbId = s.tvdb_id || s.tvdbId
                 const title = s.title || s.name
-                if (tvdbId && title) {
-                  seriesNamesMap.set(String(tvdbId).trim(), String(title).trim())
+                const statusVal = s.status || s.status_name
+
+                if (tvdbId) {
+                  const tvdbIdStr = String(tvdbId).trim()
+                  if (title) seriesNamesMap.set(tvdbIdStr, String(title).trim())
+                  if (statusVal) seriesStatusMap.set(tvdbIdStr, String(statusVal).trim().toLowerCase())
                 }
                 
                 if (Array.isArray(s.seasons)) {
@@ -151,14 +156,22 @@ export default function Configuracoes() {
             const headers = seriesRows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/^["']|["']$/g, ''))
             const idIdx = headers.findIndex(h => h === 'tvdb_id' || h.includes('tvdb'))
             const titleIdx = headers.findIndex(h => h === 'title' || h === 'name' || h.includes('titulo') || h.includes('título'))
+            const statusIdx = headers.findIndex(h => h === 'status')
             
-            if (idIdx >= 0 && titleIdx >= 0) {
+            if (idIdx >= 0) {
               for (let i = 1; i < seriesRows.length; i++) {
                 const row = seriesRows[i]
                 const tvdbIdVal = row[idIdx]?.replace(/^["']|["']$/g, '').trim()
-                const titleVal = row[titleIdx]?.replace(/^["']|["']$/g, '').trim()
-                if (tvdbIdVal && titleVal) {
-                  seriesNamesMap.set(tvdbIdVal, titleVal)
+                
+                if (tvdbIdVal) {
+                  if (titleIdx >= 0 && row[titleIdx]) {
+                    const titleVal = row[titleIdx]?.replace(/^["']|["']$/g, '').trim()
+                    seriesNamesMap.set(tvdbIdVal, titleVal)
+                  }
+                  if (statusIdx >= 0 && row[statusIdx]) {
+                    const statusVal = row[statusIdx]?.replace(/^["']|["']$/g, '').trim().toLowerCase()
+                    seriesStatusMap.set(tvdbIdVal, statusVal)
+                  }
                 }
               }
             }
@@ -437,7 +450,14 @@ export default function Configuracoes() {
         if (erroCount) console.error(`[Importador] Erro ao contar episódios de "${nomeExibicao}":`, erroCount)
 
         if (assistidosCount && assistidosCount > 0) {
-          const status = assistidosCount >= totalEpisodiosSerie ? 'visto' : 'vendo'
+          let status = 'vendo'
+          const tvtimeStatus = seriesStatusMap.get(tvdbId) || 'continuing'
+
+          if (assistidosCount >= totalEpisodiosSerie) {
+            status = 'visto'
+          } else if (tvtimeStatus === 'stopped') {
+            status = 'quero_ver' // Define como 'quero_ver' se a série estiver interrompida (stopped) no TV Time [1, 2]
+          }
           
           const { error: erroUpsertUserItem } = await supabase.from('user_item').upsert({
             user_id: user.id,
