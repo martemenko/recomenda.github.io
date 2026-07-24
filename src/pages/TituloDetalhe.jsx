@@ -106,12 +106,17 @@ export default function TituloDetalhe() {
 
   async function mudarStatus(novoStatus) {
     setMenuStatusAberto(false)
-    await supabase.from('user_item').upsert({
+    const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
       titulo_id: Number(id),
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
+    if (error) {
+      console.error('Erro ao mudar status:', error)
+      alert(`Não foi possível atualizar o status: ${error.message}`)
+      return
+    }
     carregar()
   }
 
