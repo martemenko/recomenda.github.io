@@ -9,6 +9,7 @@ import Explorar from './pages/Explorar'
 import Perfil from './pages/Perfil'
 import Configuracoes from './pages/Configuracoes'
 import TituloDetalhe from './pages/TituloDetalhe'
+import ListaDetalhe from './pages/ListaDetalhe'
 
 function RotasPrivadas() {
   const { session } = useAuth()
@@ -38,6 +39,7 @@ function RotasPrivadas() {
         <Route path="/perfil" element={<Perfil />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/titulo/:id" element={<TituloDetalhe />} />
+        <Route path="/lista/:id" element={<ListaDetalhe />} />
         <Route path="*" element={<Navigate to="/series" replace />} />
       </Routes>
       <RodapeCondicional />
