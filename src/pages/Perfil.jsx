@@ -86,10 +86,20 @@ export default function Perfil() {
 
     const { data: listasData, error: erroListas } = await supabase
       .from('lista')
-      .select('id, nome, lista_item(titulo_id, titulo(nome, imagem))')
+      .select('id, nome, lista_item(titulo_id, created_at, titulo(nome, imagem))')
       .eq('user_id', user.id)
     if (erroListas) console.error('Erro ao buscar listas:', erroListas)
-    setListas(listasData ?? [])
+
+    // Ordena os itens de cada lista por data de adição (mais recentes primeiro)
+    // pra usar nos cartazes de preview - o total exibido continua sendo a
+    // contagem de todos os itens, só o preview é limitado.
+    const listasOrdenadas = (listasData ?? []).map((l) => ({
+      ...l,
+      lista_item: [...l.lista_item].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      ),
+    }))
+    setListas(listasOrdenadas)
 
     // Histórico recente - busca um lote maior de episódios (não só 12) porque
     // várias linhas podem ser do mesmo título; dedupe por titulo_id mantendo
@@ -178,23 +188,22 @@ export default function Perfil() {
             <button
               key={l.id}
               onClick={() => navigate(`/lista/${l.id}`)}
-              className="flex-shrink-0 w-32 text-left"
+              className="flex-shrink-0 w-36 text-left"
             >
-              <div className="flex -space-x-3 mb-1.5">
-                {l.lista_item.slice(0, 3).map((item, i) => (
+              <div className="text-xs text-ink font-display font-medium truncate mb-1.5">{l.nome}</div>
+              <div className="flex gap-1 mb-1">
+                {l.lista_item.slice(0, 5).map((item) => (
                   <img
                     key={item.titulo_id}
                     src={item.titulo?.imagem}
                     alt={item.titulo?.nome}
-                    className="w-9 h-13 object-cover rounded-md border-2 border-bg"
-                    style={{ zIndex: 3 - i }}
+                    className="w-6 aspect-[2/3] object-cover rounded-sm bg-surface2 flex-shrink-0"
                   />
                 ))}
                 {l.lista_item.length === 0 && (
-                  <div className="w-9 h-13 rounded-md bg-surface2 border-2 border-bg" />
+                  <div className="w-6 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
                 )}
               </div>
-              <div className="text-xs text-ink font-display font-medium truncate mb-1">{l.nome}</div>
               <div className="text-[10px] text-muted font-mono">{l.lista_item.length} títulos</div>
             </button>
           ))}
