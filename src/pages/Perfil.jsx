@@ -201,28 +201,26 @@ export default function Perfil() {
           </button>
         </div>
         {listas.length === 0 && <div className="px-4 pb-2 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>}
-        <div className="flex gap-3 px-4 pb-2 overflow-x-auto scroll-area">
+        <div className="px-4 pb-2 space-y-4">
           {listas.map((l) => (
             <button
               key={l.id}
               onClick={() => navigate(`/lista/${l.id}`)}
-              className="flex-shrink-0 w-36 text-left"
+              className="w-full text-left block"
             >
-              <div className="text-xs text-ink font-display font-medium truncate mb-1.5">{l.nome}</div>
-              <div className="flex gap-1 mb-1">
+              <div className="text-sm text-ink font-display font-medium truncate mb-1.5">{l.nome}</div>
+              <div className="flex gap-1">
                 {l.lista_item.slice(0, 5).map((item) => (
-                  <img
+                  <div
                     key={item.titulo_id}
-                    src={item.titulo?.imagem}
-                    alt={item.titulo?.nome}
-                    className="w-6 aspect-[2/3] object-cover rounded-sm bg-surface2 flex-shrink-0"
+                    className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0 bg-cover bg-center"
+                    style={item.titulo?.imagem ? { backgroundImage: `url(${item.titulo.imagem})` } : undefined}
                   />
                 ))}
                 {l.lista_item.length === 0 && (
-                  <div className="w-6 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
+                  <div className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
                 )}
               </div>
-              <div className="text-[10px] text-muted font-mono">{l.lista_item.length} títulos</div>
             </button>
           ))}
         </div>
