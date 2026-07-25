@@ -84,20 +84,38 @@ export default function Perfil() {
       filmes: filmes.length,
     })
 
-    const { data: listasData, error: erroListas } = await supabase
+    // Tenta buscar com created_at pra ordenar os itens por data de adição.
+    // Se a coluna não existir em lista_item, a query toda falha (Postgrest
+    // rejeita, não ignora o campo) - nesse caso refaz sem created_at pra lista
+    // não desaparecer por causa disso.
+    let listasData = null
+    let temCreatedAt = true
+    const { data: dataComData, error: erroComData } = await supabase
       .from('lista')
       .select('id, nome, lista_item(titulo_id, created_at, titulo(nome, imagem))')
       .eq('user_id', user.id)
-    if (erroListas) console.error('Erro ao buscar listas:', erroListas)
+
+    if (erroComData) {
+      console.warn('[Perfil] Não foi possível ordenar itens de lista por data de adição (lista_item pode não ter coluna created_at). Buscando sem ordenação.', erroComData)
+      temCreatedAt = false
+      const { data: dataSemData, error: erroSemData } = await supabase
+        .from('lista')
+        .select('id, nome, lista_item(titulo_id, titulo(nome, imagem))')
+        .eq('user_id', user.id)
+      if (erroSemData) console.error('Erro ao buscar listas:', erroSemData)
+      listasData = dataSemData
+    } else {
+      listasData = dataComData
+    }
 
     // Ordena os itens de cada lista por data de adição (mais recentes primeiro)
     // pra usar nos cartazes de preview - o total exibido continua sendo a
     // contagem de todos os itens, só o preview é limitado.
     const listasOrdenadas = (listasData ?? []).map((l) => ({
       ...l,
-      lista_item: [...l.lista_item].sort(
-        (a, b) => new Date(b.created_at) - new Date(a.created_at)
-      ),
+      lista_item: temCreatedAt
+        ? [...l.lista_item].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        : l.lista_item,
     }))
     setListas(listasOrdenadas)
 
