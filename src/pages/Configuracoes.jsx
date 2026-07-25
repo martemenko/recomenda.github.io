@@ -38,6 +38,20 @@ function acharIndiceAssistido(headers) {
   return headers.findIndex((h) => h.includes('watched') && !h.endsWith('_at') && !h.includes('date'))
 }
 
+// O TV Time exporta os mesmos dados em CSV e JSON dentro do mesmo ZIP. A ordem
+// em que o JSZip lista os arquivos não é garantida, então um find() ingênuo
+// pode pegar o .json em vez do .csv (ou vice-versa) dependendo do zip. Os dois
+// formatos nem sempre têm os mesmos nomes de campo (ex: "status" no CSV pode
+// não existir com esse nome no JSON), então padronizamos: sempre que houver
+// as duas versões do mesmo arquivo, prioriza o .csv.
+function acharArquivoPreferindoCsv(files, incluiTodos, excluiAlgum) {
+  const candidatos = files.filter((name) =>
+    incluiTodos.every((termo) => name.includes(termo)) &&
+    (!excluiAlgum || !excluiAlgum.some((termo) => name.includes(termo)))
+  )
+  return candidatos.find((name) => name.toLowerCase().endsWith('.csv')) || candidatos[0]
+}
+
 // Resolve o tmdb_id de um título a partir do que o TV Time exportou (tvdb_id
 // e/ou imdb_id, já que filmes não vêm com tmdb_id direto), com fallback pra
 // busca por nome quando a busca por ID externo não acha nada.
@@ -152,9 +166,9 @@ export default function Configuracoes() {
       console.log('[Importador] Arquivos válidos encontrados no ZIP:', files)
 
       // 1. Processar o arquivo de séries para mapear nome por tvdb_id
-      const seriesFileKey = files.find(name => 
-        name.includes('tvtime-series-') && !name.includes('tvtime-series-episodes')
-      )
+      const seriesFileKey = acharArquivoPreferindoCsv(files, ['tvtime-series-'], ['tvtime-series-episodes'])
+
+      console.log('[Importador] Arquivo de séries escolhido:', seriesFileKey)
       
       const seriesNamesMap = new Map()
       const seriesStatusMap = new Map() // Armazena o status original (continuing, stopped, up_to_date)
@@ -236,9 +250,10 @@ export default function Configuracoes() {
       }
 
       console.log(`[Importador] Mapeamento de nomes de séries carregado: ${seriesNamesMap.size} títulos.`)
+      console.log(`[Importador] Mapeamento de status de séries carregado: ${seriesStatusMap.size} entradas.`, [...seriesStatusMap.entries()].slice(0, 10))
 
       // 2. Processar o arquivo de episódios de séries
-      const episodesFileKey = files.find(name => name.includes('tvtime-series-episodes'))
+      const episodesFileKey = acharArquivoPreferindoCsv(files, ['tvtime-series-episodes'])
 
       if (episodesFileKey) {
         setProgresso('Lendo arquivo de episódios...')
@@ -315,7 +330,7 @@ export default function Configuracoes() {
       }
 
       // 3. Processar o arquivo de filmes (tvtime-movies-)
-      const moviesFileKey = files.find(name => name.includes('tvtime-movies-'))
+      const moviesFileKey = acharArquivoPreferindoCsv(files, ['tvtime-movies-'])
       const moviesList = []
 
       if (moviesFileKey) {
@@ -389,7 +404,7 @@ export default function Configuracoes() {
       }
 
       // 4. Processar o arquivo de listas customizadas (tvtime-lists-)
-      const listsFileKey = files.find(name => name.includes('tvtime-lists-'))
+      const listsFileKey = acharArquivoPreferindoCsv(files, ['tvtime-lists-'])
       const listasMap = new Map() // list_id -> { nome, itens: [{tvdbId, imdbId, tmdbId, nome, mediaType}] }
 
       // TV Time não documenta os valores exatos de item_type - assume que qualquer
@@ -600,6 +615,8 @@ export default function Configuracoes() {
           .in('episode_id', episodiosBanco.map(e => e.id))
 
         if (erroCount) console.error(`[Importador] Erro ao contar episódios de "${nomeExibicao}":`, erroCount)
+
+        console.log(`[Importador] "${nomeExibicao}" tvdbId=${tvdbId} status TV Time encontrado=${seriesStatusMap.get(tvdbId) ?? '(nenhum)'}`)
 
         if (assistidosCount && assistidosCount > 0) {
           let status = 'vendo'
