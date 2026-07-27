@@ -27,6 +27,7 @@ async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
 
 const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
 
+// Retorna a URL correta do poster
 function urlPoster(caminho) {
   if (!caminho) return null
   return caminho.startsWith('http') ? caminho : `${POSTER_BASE_THUMB}${caminho}`
@@ -100,6 +101,13 @@ export default function Perfil() {
     })
 
     // --- Favoritos (séries e filmes) ---
+    // Não existe coluna dedicada de "data em que foi favoritado" no schema.
+    // A única coluna de timestamp em user_item além de added_at é
+    // status_atualizado_em, que muito provavelmente só é tocada quando o
+    // campo "status" muda - favoritar não muda status, então essa ordenação
+    // pode não refletir a data real de quando foi favoritado. Mantendo como
+    // melhor aproximação disponível até existir uma coluna dedicada
+    // (ex: favorito_atualizado_em).
     const { data: favoritosRaw, error: erroFavoritos } = await supabase
       .from('user_item')
       .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
@@ -161,6 +169,8 @@ export default function Perfil() {
     )
 
     // --- Meus filmes (ordenados pela data em que foram marcados como vistos) ---
+    // Aqui status_atualizado_em É confiável: marcar como "visto" é uma
+    // mudança do campo status, exatamente o que essa coluna rastreia.
     const { data: filmesVistosRaw, error: erroFilmesVistos } = await supabase
       .from('user_item')
       .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
@@ -183,6 +193,7 @@ export default function Perfil() {
     )
 
     // --- Listas ---
+    // lista_item usa "added_at" (confirmado no schema), não "created_at".
     const { data: listasData, error: erroListas } = await supabase
       .from('lista')
       .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
@@ -310,11 +321,11 @@ export default function Perfil() {
             <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
           ) : (
             <>
-              {/* Estilização aplicada ao contêiner de listas */}
+              {/* Estilização aplicada ao contêiner de listas com items-start e altura fixa */}
               <div
                 ref={listasScrollRef}
                 onScroll={aoRolarListas}
-                className="flex flex-nowrap overflow-x-auto snap-x snap-mandatory custom-scrollbar pb-3"
+                className="flex flex-nowrap items-start overflow-x-auto snap-x snap-mandatory custom-scrollbar pb-3 h-[135px]"
                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
               >
                 {listas.map((l) => (
@@ -443,9 +454,9 @@ function Prateleira({ titulo, itens, navigate, aoExpandir }) {
       {itens.length === 0 ? (
         <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
       ) : (
-        /* Adicionada a classe custom-scrollbar e pb-3 para dar margem à nova barra amarela de 5px */
+        /* Adicionada as classes items-start e h-[220px] para alinhar os cartazes e evitar distorções de tamanho */
         <div 
-          className="flex flex-nowrap gap-3 px-4 pb-3 overflow-x-auto custom-scrollbar"
+          className="flex flex-nowrap items-start gap-3 px-4 pb-3 overflow-x-auto custom-scrollbar h-[220px]"
           style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
         >
           {itens.slice(0, 10).map((t) => (
