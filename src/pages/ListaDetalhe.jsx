@@ -5,6 +5,13 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 
+const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
+
+function urlPoster(caminho) {
+  if (!caminho) return null
+  return caminho.startsWith('http') ? caminho : `${POSTER_BASE_THUMB}${caminho}`
+}
+
 export default function ListaDetalhe() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -167,6 +174,26 @@ export default function ListaDetalhe() {
     }
   }
 
+  async function excluirLista() {
+    const confirmar = window.confirm(`Excluir a lista "${lista.nome}"? Essa ação não pode ser desfeita.`)
+    if (!confirmar) return
+    try {
+      const { error: erroItens } = await supabase.from('lista_item').delete().eq('lista_id', id)
+      if (erroItens) {
+        alert(`Erro ao excluir itens da lista: ${erroItens.message}`)
+        return
+      }
+      const { error: erroLista } = await supabase.from('lista').delete().eq('id', id)
+      if (erroLista) {
+        alert(`Erro ao excluir lista: ${erroLista.message}`)
+        return
+      }
+      navigate('/perfil')
+    } catch (e) {
+      alert(`Erro ao excluir lista: ${e.message}`)
+    }
+  }
+
   if (carregando) {
     return (
       <div className="flex-1">
@@ -212,14 +239,22 @@ export default function ListaDetalhe() {
         }
       />
 
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 flex gap-2">
         <button
           onClick={() => setBuscaAberta((v) => !v)}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-surface2 hover:bg-white/10 text-amber border border-amber/20 font-display font-semibold rounded-xl text-sm transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-surface2 hover:bg-white/10 text-amber border border-amber/20 font-display font-semibold rounded-xl text-sm transition-colors"
         >
           <Search size={16} /> Adicionar título
         </button>
+        <button
+          onClick={excluirLista}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-sm transition-colors"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
 
+      <div className="px-4">
         {buscaAberta && (
           <div className="mt-3 bg-surface border border-white/5 rounded-2xl p-3 space-y-3">
             <form onSubmit={buscarTitulos} className="flex gap-2">
@@ -266,7 +301,7 @@ export default function ListaDetalhe() {
                         className="w-9 aspect-[2/3] rounded-md bg-surface2 flex-shrink-0 bg-cover bg-center"
                         style={
                           r.imagem || r.poster
-                            ? { backgroundImage: `url(${r.imagem || r.poster})` }
+                            ? { backgroundImage: `url(${urlPoster(r.imagem || r.poster)})` }
                             : undefined
                         }
                       />
@@ -297,7 +332,7 @@ export default function ListaDetalhe() {
             <div
               onClick={() => navigate(`/titulo/${item.titulo_id}`)}
               className="w-11 aspect-[2/3] rounded-md bg-surface2 flex-shrink-0 bg-cover bg-center cursor-pointer"
-              style={item.titulo?.imagem ? { backgroundImage: `url(${item.titulo.imagem})` } : undefined}
+              style={item.titulo?.imagem ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` } : undefined}
             />
             <div
               onClick={() => navigate(`/titulo/${item.titulo_id}`)}
