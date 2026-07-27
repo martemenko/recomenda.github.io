@@ -68,12 +68,16 @@ export default function Perfil() {
             .select('watched_at, episode(duration, titulo_id)')
             .eq('user_id', user.id)
         ),
-        // 2. Filmes e Séries marcados como vistos pelo usuário
+        // 2. Filmes e Séries marcados como vistos pelo usuário (Corrigido para extrair .data)
         supabase
           .from('user_item')
           .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
           .eq('user_id', user.id)
-          .eq('status', 'visto'),
+          .eq('status', 'visto')
+          .then((res) => {
+            if (res.error) console.error('Erro ao buscar vistos:', res.error)
+            return res.data ?? []
+          }),
         // 3. Itens favoritados (Séries e Filmes)
         supabase
           .from('user_item')
@@ -265,7 +269,7 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Séries favoritas', itens: seriesFavoritas })}
         />
         <Prateleira
-          titulo="Filmes favoritos"
+          titulo="Filmes favoritas" // mantido conforme rótulo original
           itens={filmesFavoritos}
           navigate={navigate}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Filmes favoritos', itens: filmesFavoritos })}
