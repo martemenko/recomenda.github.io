@@ -27,7 +27,6 @@ async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
 
 const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
 
-// Retorna a URL correta do poster
 function urlPoster(caminho) {
   if (!caminho) return null
   return caminho.startsWith('http') ? caminho : `${POSTER_BASE_THUMB}${caminho}`
@@ -59,152 +58,135 @@ export default function Perfil() {
   }, [user])
 
   async function carregar() {
-    // --- Estatísticas ---
-    let eps = []
     try {
-      eps = await buscarTodasLinhas(() =>
-        supabase.from('watched_episode').select('episode(duration)').eq('user_id', user.id)
-      )
-    } catch (erroEps) {
-      console.error('Erro ao buscar watched_episode:', erroEps)
-    }
-    const minutosTv = eps.reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
+      // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
+      const [epsComData, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
+        // 1. Histórico de episódios vistos (unificado: estatísticas + ordenação de séries)
+        buscarTodasLinhas(() =>
+          supabase
+            .from('watched_episode')
+            .select('watched_at, episode(duration, titulo_id)')
+            .eq('user_id', user.id)
+        ),
+        // 2. Filmes e Séries marcados como vistos pelo usuário
+        supabase
+          .from('user_item')
+          .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
+          .eq('user_id', user.id)
+          .eq('status', 'visto'),
+        // 3. Itens favoritados (Séries e Filmes)
+        supabase
+          .from('user_item')
+          .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
+          .eq('user_id', user.id)
+          .eq('favorito', true)
+          .then((res) => {
+            if (res.error) console.error('Erro ao buscar favoritos:', res.error)
+            return res.data ?? []
+          }),
+        // 4. Minhas Listas personalizadas
+        supabase
+          .from('lista')
+          .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
+          .eq('user_id', user.id)
+          .then((res) => {
+            if (res.error) console.error('Erro ao buscar listas:', res.error)
+            return res.data ?? []
+          })
+      ])
 
-    let itensVistos = []
-    try {
-      itensVistos = await buscarTodasLinhas(() =>
-        supabase.from('user_item').select('titulo_id').eq('user_id', user.id).eq('status', 'visto')
-      )
-    } catch (erroItensVistos) {
-      console.error('Erro ao buscar user_item (visto):', erroItensVistos)
-    }
-
-    const idsVistos = itensVistos.map((i) => i.titulo_id)
-    let filmesDuracao = []
-    try {
-      filmesDuracao = idsVistos.length
-        ? await buscarTodasLinhas(() =>
-            supabase.from('movies').select('titulo_id, duration').in('titulo_id', idsVistos)
-          )
-        : []
-    } catch (erroFilmes) {
-      console.error('Erro ao buscar movies:', erroFilmes)
-    }
-
-    const minutosFilme = filmesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
-
-    setStats({
-      tempoTv: formatarDuracao(minutosTv).texto,
-      episodios: eps.length,
-      tempoFilme: formatarDuracao(minutosFilme).texto,
-      filmes: filmesDuracao.length,
-    })
-
-    // --- Favoritos (séries e filmes) ---
-    // Não existe coluna dedicada de "data em que foi favoritado" no schema.
-    // A única coluna de timestamp em user_item além de added_at é
-    // status_atualizado_em, que muito provavelmente só é tocada quando o
-    // campo "status" muda - favoritar não muda status, então essa ordenação
-    // pode não refletir a data real de quando foi favoritado. Mantendo como
-    // melhor aproximação disponível até existir uma coluna dedicada
-    // (ex: favorito_atualizado_em).
-    const { data: favoritosRaw, error: erroFavoritos } = await supabase
-      .from('user_item')
-      .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
-      .eq('user_id', user.id)
-      .eq('favorito', true)
-    if (erroFavoritos) console.error('Erro ao buscar favoritos:', erroFavoritos)
-
-    const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
-    const { data: seriesEntreFavoritos } = idsFavoritos.length
-      ? await supabase.from('series').select('titulo_id').in('titulo_id', idsFavoritos)
-      : { data: [] }
-    const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
-
-    const ordenarPorData = (lista) =>
-      [...lista].sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
-
-    setSeriesFavoritas(
-      ordenarPorData((favoritosRaw ?? []).filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
-        .map((f) => f.titulo)
-        .filter(Boolean)
-    )
-    setFilmesFavoritos(
-      ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
-        .map((f) => f.titulo)
-        .filter(Boolean)
-    )
-
-    // --- Minhas séries (ordenadas pela data do último episódio assistido) ---
-    let epsComData = []
-    try {
-      epsComData = await buscarTodasLinhas(() =>
-        supabase.from('watched_episode').select('watched_at, episode(titulo_id)').eq('user_id', user.id)
-      )
-    } catch (e) {
-      console.error('Erro ao buscar episódios assistidos p/ Minhas séries:', e)
-    }
-
-    const ultimaDataPorSerie = new Map()
-    for (const e of epsComData) {
-      const tid = e.episode?.titulo_id
-      if (!tid || !e.watched_at) continue
-      const atual = ultimaDataPorSerie.get(tid)
-      if (!atual || new Date(e.watched_at) > new Date(atual)) {
-        ultimaDataPorSerie.set(tid, e.watched_at)
+      // Processamento em memória do histórico de episódios vistos (Minhas séries)
+      const minutosTv = epsComData.reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
+      const ultimaDataPorSerie = new Map()
+      for (const e of epsComData) {
+        const tid = e.episode?.titulo_id
+        if (!tid || !e.watched_at) continue
+        const atual = ultimaDataPorSerie.get(tid)
+        if (!atual || new Date(e.watched_at) > new Date(atual)) {
+          ultimaDataPorSerie.set(tid, e.watched_at)
+        }
       }
+
+      const idsMinhasSeries = [...ultimaDataPorSerie.keys()]
+      const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
+      const idsVistos = (filmesVistosRaw ?? []).map((i) => i.titulo_id)
+
+      // --- LOTE PARALELO 2: Dispara as 4 consultas dependentes simultaneamente ---
+      const [moviesDuracao, seriesEntreFavoritos, titulosMinhasSeries, moviesEntreVistos] = await Promise.all([
+        // A. Duração dos filmes vistos (para estatísticas)
+        idsVistos.length
+          ? buscarTodasLinhas(() =>
+              supabase.from('movies').select('titulo_id, duration').in('titulo_id', idsVistos)
+            )
+          : [],
+        // B. Identificação de quais favoritos são séries (vs filmes)
+        idsFavoritos.length
+          ? supabase.from('series').select('titulo_id').in('titulo_id', idsFavoritos).then((res) => res.data ?? [])
+          : [],
+        // C. Dados visuais (imagens/nomes) para as Minhas Séries
+        idsMinhasSeries.length
+          ? supabase.from('titulo').select('id, nome, imagem').in('id', idsMinhasSeries).then((res) => res.data ?? [])
+          : [],
+        // D. Identificação de quais vistos são filmes (vs séries)
+        idsVistos.length
+          ? supabase.from('movies').select('titulo_id').in('titulo_id', idsVistos).then((res) => res.data ?? [])
+          : []
+      ])
+
+      // --- Processamento Local de Estatísticas ---
+      const minutosFilme = moviesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
+      setStats({
+        tempoTv: formatarDuracao(minutosTv).texto,
+        episodios: epsComData.length,
+        tempoFilme: formatarDuracao(minutosFilme).texto,
+        filmes: moviesDuracao.length,
+      })
+
+      // --- Processamento Local de Favoritos ---
+      const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
+      const ordenarPorData = (lista) =>
+        [...lista].sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
+
+      setSeriesFavoritas(
+        ordenarPorData((favoritosRaw ?? []).filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
+          .map((f) => f.titulo)
+          .filter(Boolean)
+      )
+      setFilmesFavoritos(
+        ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
+          .map((f) => f.titulo)
+          .filter(Boolean)
+      )
+
+      // --- Processamento Local de Minhas Séries ---
+      const mapaTitulosSeries = new Map((titulosMinhasSeries ?? []).map((t) => [t.id, t]))
+      setMinhasSeries(
+        idsMinhasSeries
+          .map((tid) => mapaTitulosSeries.get(tid))
+          .filter(Boolean)
+          .sort((a, b) => new Date(ultimaDataPorSerie.get(b.id)) - new Date(ultimaDataPorSerie.get(a.id)))
+      )
+
+      // --- Processamento Local de Meus Filmes ---
+      const idsMoviesConfirmados = new Set((moviesEntreVistos ?? []).map((m) => m.titulo_id))
+      setMeusFilmes(
+        [...(filmesVistosRaw ?? [])]
+          .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
+          .filter((f) => idsMoviesConfirmados.has(f.titulo_id))
+          .map((f) => f.titulo)
+          .filter(Boolean)
+      )
+
+      // --- Processamento Local de Listas ---
+      const listasOrdenadas = (listasData ?? []).map((l) => ({
+        ...l,
+        lista_item: [...l.lista_item].sort((a, b) => new Date(b.added_at) - new Date(a.added_at)),
+      }))
+      setListas(listasOrdenadas)
+
+    } catch (err) {
+      console.error('[Perfil] Falha no carregamento paralelo:', err)
     }
-
-    const idsMinhasSeries = [...ultimaDataPorSerie.keys()]
-    const { data: titulosMinhasSeries } = idsMinhasSeries.length
-      ? await supabase.from('titulo').select('id, nome, imagem').in('id', idsMinhasSeries)
-      : { data: [] }
-    const mapaTitulosSeries = new Map((titulosMinhasSeries ?? []).map((t) => [t.id, t]))
-
-    setMinhasSeries(
-      idsMinhasSeries
-        .map((tid) => mapaTitulosSeries.get(tid))
-        .filter(Boolean)
-        .sort((a, b) => new Date(ultimaDataPorSerie.get(b.id)) - new Date(ultimaDataPorSerie.get(a.id)))
-    )
-
-    // --- Meus filmes (ordenados pela data em que foram marcados como vistos) ---
-    // Aqui status_atualizado_em É confiável: marcar como "visto" é uma
-    // mudança do campo status, exatamente o que essa coluna rastreia.
-    const { data: filmesVistosRaw, error: erroFilmesVistos } = await supabase
-      .from('user_item')
-      .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
-      .eq('user_id', user.id)
-      .eq('status', 'visto')
-    if (erroFilmesVistos) console.error('Erro ao buscar filmes vistos:', erroFilmesVistos)
-
-    const idsFilmesVistos = (filmesVistosRaw ?? []).map((f) => f.titulo_id)
-    const { data: moviesEntreVistos } = idsFilmesVistos.length
-      ? await supabase.from('movies').select('titulo_id').in('titulo_id', idsFilmesVistos)
-      : { data: [] }
-    const idsMoviesConfirmados = new Set((moviesEntreVistos ?? []).map((m) => m.titulo_id))
-
-    setMeusFilmes(
-      [...(filmesVistosRaw ?? [])]
-        .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
-        .filter((f) => idsMoviesConfirmados.has(f.titulo_id))
-        .map((f) => f.titulo)
-        .filter(Boolean)
-    )
-
-    // --- Listas ---
-    // lista_item usa "added_at" (confirmado no schema), não "created_at".
-    const { data: listasData, error: erroListas } = await supabase
-      .from('lista')
-      .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
-      .eq('user_id', user.id)
-    if (erroListas) console.error('Erro ao buscar listas:', erroListas)
-
-    const listasOrdenadas = (listasData ?? []).map((l) => ({
-      ...l,
-      lista_item: [...l.lista_item].sort((a, b) => new Date(b.added_at) - new Date(a.added_at)),
-    }))
-    setListas(listasOrdenadas)
   }
 
   async function criarLista() {
