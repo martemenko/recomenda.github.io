@@ -100,13 +100,6 @@ export default function Perfil() {
     })
 
     // --- Favoritos (séries e filmes) ---
-    // Não existe coluna dedicada de "data em que foi favoritado" no schema.
-    // A única coluna de timestamp em user_item além de added_at é
-    // status_atualizado_em, que muito provavelmente só é tocada quando o
-    // campo "status" muda - favoritar não muda status, então essa ordenação
-    // pode não refletir a data real de quando foi favoritado. Mantendo como
-    // melhor aproximação disponível até existir uma coluna dedicada
-    // (ex: favorito_atualizado_em).
     const { data: favoritosRaw, error: erroFavoritos } = await supabase
       .from('user_item')
       .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
@@ -168,8 +161,6 @@ export default function Perfil() {
     )
 
     // --- Meus filmes (ordenados pela data em que foram marcados como vistos) ---
-    // Aqui status_atualizado_em É confiável: marcar como "visto" é uma
-    // mudança do campo status, exatamente o que essa coluna rastreia.
     const { data: filmesVistosRaw, error: erroFilmesVistos } = await supabase
       .from('user_item')
       .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
@@ -192,7 +183,6 @@ export default function Perfil() {
     )
 
     // --- Listas ---
-    // lista_item usa "added_at" (confirmado no schema), não "created_at".
     const { data: listasData, error: erroListas } = await supabase
       .from('lista')
       .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
@@ -235,6 +225,25 @@ export default function Perfil() {
 
   return (
     <>
+      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 5px !important;
+          display: block !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05) !important;
+          border-radius: 10px !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #f3c255 !important;
+          border-radius: 10px !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #e2b144 !important;
+        }
+      `}</style>
+
       <TopBar
         title="Perfil"
         rightSlot={
@@ -301,11 +310,12 @@ export default function Perfil() {
             <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
           ) : (
             <>
-              {/* Removida a classe scroll-area deste contêiner horizontal para corrigir a rolagem */}
+              {/* Estilização aplicada ao contêiner de listas */}
               <div
                 ref={listasScrollRef}
                 onScroll={aoRolarListas}
-                className="flex overflow-x-auto snap-x snap-mandatory"
+                className="flex flex-nowrap overflow-x-auto snap-x snap-mandatory custom-scrollbar pb-3"
+                style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
               >
                 {listas.map((l) => (
                   <button
@@ -418,10 +428,7 @@ export default function Perfil() {
   )
 }
 
-// Prateleira horizontal reutilizada pelas 4 seções de "top 10" (séries/filmes
-// favoritos, minhas séries, meus filmes). Mostra só os 10 primeiros itens da
-// lista recebida (que já vem ordenada); o botão de seta abre a lista completa
-// em tela cheia via aoExpandir.
+// Prateleira horizontal reutilizada pelas 4 seções de "top 10" (séries/filmes favoritos, minhas séries, meus filmes).
 function Prateleira({ titulo, itens, navigate, aoExpandir }) {
   return (
     <div className="mb-1">
@@ -436,8 +443,11 @@ function Prateleira({ titulo, itens, navigate, aoExpandir }) {
       {itens.length === 0 ? (
         <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
       ) : (
-        /* Removida a classe scroll-area deste contêiner horizontal para corrigir a rolagem */
-        <div className="flex gap-3 px-4 pb-2 overflow-x-auto">
+        /* Adicionada a classe custom-scrollbar e pb-3 para dar margem à nova barra amarela de 5px */
+        <div 
+          className="flex flex-nowrap gap-3 px-4 pb-3 overflow-x-auto custom-scrollbar"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
+        >
           {itens.slice(0, 10).map((t) => (
             <div key={t.id} className="flex-shrink-0 w-28">
               <PosterCard imagem={t.imagem} nome={t.nome} onClick={() => navigate(`/titulo/${t.id}`)} />
