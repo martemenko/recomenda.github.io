@@ -148,8 +148,8 @@ export default function Perfil() {
     for (const e of epsComData) {
       const tid = e.episode?.titulo_id
       if (!tid || !e.watched_at) continue
-      const @atual = ultimaDataPorSerie.get(tid)
-      if (!@atual || new Date(e.watched_at) > new Date(@atual)) {
+      const atual = ultimaDataPorSerie.get(tid)
+      if (!atual || new Date(e.watched_at) > new Date(atual)) {
         ultimaDataPorSerie.set(tid, e.watched_at)
       }
     }
