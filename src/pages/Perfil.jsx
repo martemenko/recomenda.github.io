@@ -100,47 +100,36 @@ export default function Perfil() {
     })
 
     // --- Favoritos (séries e filmes) ---
-    // Não existe uma coluna dedicada de "data em que foi favoritado" - usa
-    // updated_at de user_item como aproximação. Se a coluna não existir, cai
-    // sem ordenação (não quebra a seção).
-    let favoritosRaw = []
-    let temDataFavorito = true
-    {
-      const { data, error } = await supabase
-        .from('user_item')
-        .select('titulo_id, updated_at, titulo(id, nome, imagem)')
-        .eq('user_id', user.id)
-        .eq('favorito', true)
-      if (error) {
-        temDataFavorito = false
-        const fallback = await supabase
-          .from('user_item')
-          .select('titulo_id, titulo(id, nome, imagem)')
-          .eq('user_id', user.id)
-          .eq('favorito', true)
-        if (fallback.error) console.error('Erro ao buscar favoritos:', fallback.error)
-        favoritosRaw = fallback.data ?? []
-      } else {
-        favoritosRaw = data ?? []
-      }
-    }
+    // Não existe coluna dedicada de "data em que foi favoritado" no schema.
+    // A única coluna de timestamp em user_item além de added_at é
+    // status_atualizado_em, que muito provavelmente só é tocada quando o
+    // campo "status" muda - favoritar não muda status, então essa ordenação
+    // pode não refletir a data real de quando foi favoritado. Mantendo como
+    // melhor aproximação disponível até existir uma coluna dedicada
+    // (ex: favorito_atualizado_em).
+    const { data: favoritosRaw, error: erroFavoritos } = await supabase
+      .from('user_item')
+      .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
+      .eq('user_id', user.id)
+      .eq('favorito', true)
+    if (erroFavoritos) console.error('Erro ao buscar favoritos:', erroFavoritos)
 
-    const idsFavoritos = favoritosRaw.map((f) => f.titulo_id)
+    const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
     const { data: seriesEntreFavoritos } = idsFavoritos.length
       ? await supabase.from('series').select('titulo_id').in('titulo_id', idsFavoritos)
       : { data: [] }
     const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
 
     const ordenarPorData = (lista) =>
-      temDataFavorito ? [...lista].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)) : lista
+      [...lista].sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
 
     setSeriesFavoritas(
-      ordenarPorData(favoritosRaw.filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
+      ordenarPorData((favoritosRaw ?? []).filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
         .map((f) => f.titulo)
         .filter(Boolean)
     )
     setFilmesFavoritos(
-      ordenarPorData(favoritosRaw.filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
+      ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
         .map((f) => f.titulo)
         .filter(Boolean)
     )
@@ -179,76 +168,40 @@ export default function Perfil() {
     )
 
     // --- Meus filmes (ordenados pela data em que foram marcados como vistos) ---
-    // Mesma ressalva do favoritos: usa updated_at de user_item como aproximação
-    // da "data que viu", já que não existe uma coluna dedicada pra isso.
-    let filmesVistosRaw = []
-    let temDataFilme = true
-    {
-      const { data, error } = await supabase
-        .from('user_item')
-        .select('titulo_id, updated_at, titulo(id, nome, imagem)')
-        .eq('user_id', user.id)
-        .eq('status', 'visto')
-      if (error) {
-        temDataFilme = false
-        const fallback = await supabase
-          .from('user_item')
-          .select('titulo_id, titulo(id, nome, imagem)')
-          .eq('user_id', user.id)
-          .eq('status', 'visto')
-        if (fallback.error) console.error('Erro ao buscar filmes vistos:', fallback.error)
-        filmesVistosRaw = fallback.data ?? []
-      } else {
-        filmesVistosRaw = data ?? []
-      }
-    }
+    // Aqui status_atualizado_em É confiável: marcar como "visto" é uma
+    // mudança do campo status, exatamente o que essa coluna rastreia.
+    const { data: filmesVistosRaw, error: erroFilmesVistos } = await supabase
+      .from('user_item')
+      .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
+      .eq('user_id', user.id)
+      .eq('status', 'visto')
+    if (erroFilmesVistos) console.error('Erro ao buscar filmes vistos:', erroFilmesVistos)
 
-    const idsFilmesVistos = filmesVistosRaw.map((f) => f.titulo_id)
+    const idsFilmesVistos = (filmesVistosRaw ?? []).map((f) => f.titulo_id)
     const { data: moviesEntreVistos } = idsFilmesVistos.length
       ? await supabase.from('movies').select('titulo_id').in('titulo_id', idsFilmesVistos)
       : { data: [] }
     const idsMoviesConfirmados = new Set((moviesEntreVistos ?? []).map((m) => m.titulo_id))
 
-    const filmesVistosOrdenados = temDataFilme
-      ? [...filmesVistosRaw].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-      : filmesVistosRaw
-
     setMeusFilmes(
-      filmesVistosOrdenados
+      [...(filmesVistosRaw ?? [])]
+        .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
         .filter((f) => idsMoviesConfirmados.has(f.titulo_id))
         .map((f) => f.titulo)
         .filter(Boolean)
     )
 
     // --- Listas ---
-    // Tenta buscar com created_at pra ordenar os itens por data de adição.
-    // Se a coluna não existir em lista_item, a query toda falha (Postgrest
-    // rejeita, não ignora o campo) - nesse caso refaz sem created_at pra lista
-    // não desaparecer por causa disso.
-    let listasData = null
-    let temCreatedAt = true
-    const { data: dataComData, error: erroComData } = await supabase
+    // lista_item usa "added_at" (confirmado no schema), não "created_at".
+    const { data: listasData, error: erroListas } = await supabase
       .from('lista')
-      .select('id, nome, lista_item(titulo_id, created_at, titulo(nome, imagem))')
+      .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
       .eq('user_id', user.id)
-
-    if (erroComData) {
-      temCreatedAt = false
-      const { data: dataSemData, error: erroSemData } = await supabase
-        .from('lista')
-        .select('id, nome, lista_item(titulo_id, titulo(nome, imagem))')
-        .eq('user_id', user.id)
-      if (erroSemData) console.error('Erro ao buscar listas:', erroSemData)
-      listasData = dataSemData
-    } else {
-      listasData = dataComData
-    }
+    if (erroListas) console.error('Erro ao buscar listas:', erroListas)
 
     const listasOrdenadas = (listasData ?? []).map((l) => ({
       ...l,
-      lista_item: temCreatedAt
-        ? [...l.lista_item].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        : l.lista_item,
+      lista_item: [...l.lista_item].sort((a, b) => new Date(b.added_at) - new Date(a.added_at)),
     }))
     setListas(listasOrdenadas)
   }
@@ -481,7 +434,7 @@ function Prateleira({ titulo, itens, navigate, aoExpandir }) {
       ) : (
         <div className="flex gap-3 px-4 pb-2 overflow-x-auto scroll-area">
           {itens.slice(0, 10).map((t) => (
-            <div key={t.id} className="flex-shrink-0 w-24">
+            <div key={t.id} className="flex-shrink-0 w-28">
               <PosterCard imagem={t.imagem} nome={t.nome} onClick={() => navigate(`/titulo/${t.id}`)} />
             </div>
           ))}

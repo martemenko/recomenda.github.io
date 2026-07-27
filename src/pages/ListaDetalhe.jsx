@@ -55,26 +55,19 @@ export default function ListaDetalhe() {
   }
 
   async function carregarItens() {
-    // Tenta ordenar por data de adição - se lista_item não tiver created_at,
-    // a query com esse campo falha e cai no fallback sem ordenação, pra
-    // nunca ficar sem mostrar os itens por causa disso.
-    const { data: comData, error: erroComData } = await supabase
+    // lista_item usa "added_at" (confirmado no schema), não "created_at".
+    const { data, error } = await supabase
       .from('lista_item')
-      .select('titulo_id, created_at, titulo(id, nome, imagem)')
+      .select('titulo_id, added_at, titulo(id, nome, imagem)')
       .eq('lista_id', id)
-
-    if (erroComData) {
-      const { data: semData, error: erroSemData } = await supabase
-        .from('lista_item')
-        .select('titulo_id, titulo(id, nome, imagem)')
-        .eq('lista_id', id)
-      if (erroSemData) console.error('[ListaDetalhe] Erro ao buscar itens:', erroSemData)
-      setItens(semData ?? [])
+    if (error) {
+      console.error('[ListaDetalhe] Erro ao buscar itens:', error)
+      setItens([])
       return
     }
 
-    const ordenado = [...(comData ?? [])].sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    const ordenado = [...(data ?? [])].sort(
+      (a, b) => new Date(b.added_at) - new Date(a.added_at)
     )
     setItens(ordenado)
   }
@@ -143,7 +136,7 @@ export default function ListaDetalhe() {
           return
         }
         setItens((prev) => [
-          { titulo_id: tmdbId, created_at: new Date().toISOString(), titulo: tituloFinal },
+          { titulo_id: tmdbId, added_at: new Date().toISOString(), titulo: tituloFinal },
           ...prev,
         ])
       }
