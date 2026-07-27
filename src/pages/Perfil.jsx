@@ -41,7 +41,6 @@ export default function Perfil() {
   const [filmesFavoritos, setFilmesFavoritos] = useState([])
   const [minhasSeries, setMinhasSeries] = useState([])
   const [meusFilmes, setMeusFilmes] = useState([])
-  const [historico, setHistorico] = useState([])
 
   const [listas, setListas] = useState([])
   const [criandoLista, setCriandoLista] = useState(false)
@@ -252,31 +251,6 @@ export default function Perfil() {
         : l.lista_item,
     }))
     setListas(listasOrdenadas)
-
-    // --- Histórico recente ---
-    const { data: histBruto, error: erroHist } = await supabase
-      .from('watched_episode')
-      .select('episode(titulo_id)')
-      .eq('user_id', user.id)
-      .order('watched_at', { ascending: false })
-      .limit(300)
-    if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
-
-    const idsHistOrdem = []
-    const idsHistVistos = new Set()
-    for (const h of histBruto ?? []) {
-      const tid = h.episode?.titulo_id
-      if (!tid || idsHistVistos.has(tid)) continue
-      idsHistVistos.add(tid)
-      idsHistOrdem.push(tid)
-      if (idsHistOrdem.length >= 12) break
-    }
-
-    const { data: titulosHist } = idsHistOrdem.length
-      ? await supabase.from('titulo').select('id, nome, imagem').in('id', idsHistOrdem)
-      : { data: [] }
-    const mapaTitulosHist = new Map((titulosHist ?? []).map((t) => [t.id, t]))
-    setHistorico(idsHistOrdem.map((id) => mapaTitulosHist.get(id)).filter(Boolean))
   }
 
   async function criarLista() {
@@ -353,18 +327,6 @@ export default function Perfil() {
           navigate={navigate}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus filmes', itens: meusFilmes })}
         />
-
-        <SectionLabel>Histórico recente</SectionLabel>
-        <div className="grid grid-cols-3 gap-3 px-4 pb-2">
-          {historico.map((titulo) => (
-            <PosterCard
-              key={titulo.id}
-              imagem={titulo.imagem}
-              nome={titulo.nome}
-              onClick={() => navigate(`/titulo/${titulo.id}`)}
-            />
-          ))}
-        </div>
 
         <div className="flex items-center justify-between pr-4">
           <SectionLabel>Minhas listas</SectionLabel>
