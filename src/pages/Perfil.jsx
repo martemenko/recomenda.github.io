@@ -148,8 +148,8 @@ export default function Perfil() {
     for (const e of epsComData) {
       const tid = e.episode?.titulo_id
       if (!tid || !e.watched_at) continue
-      const atual = ultimaDataPorSerie.get(tid)
-      if (!atual || new Date(e.watched_at) > new Date(atual)) {
+      const @atual = ultimaDataPorSerie.get(tid)
+      if (!@atual || new Date(e.watched_at) > new Date(@atual)) {
         ultimaDataPorSerie.set(tid, e.watched_at)
       }
     }
@@ -281,73 +281,77 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus filmes', itens: meusFilmes })}
         />
 
-        <div className="flex items-center justify-between pr-4">
-          <SectionLabel>Minhas listas</SectionLabel>
-          <div className="flex items-center gap-3">
-            <button onClick={criarLista} disabled={criandoLista} className="text-amber disabled:opacity-50">
-              <Plus size={18} />
-            </button>
-            {listas.length > 0 && (
-              <button onClick={() => setTodasListasAbertas(true)} className="text-muted">
-                <LayoutGrid size={18} />
+        {/* Container mb-1 para manter o mesmo espaçamento das prateleiras anteriores */}
+        <div className="mb-1">
+          <div className="flex items-center justify-between pr-4">
+            <SectionLabel>Minhas listas</SectionLabel>
+            <div className="flex items-center gap-3">
+              <button onClick={criarLista} disabled={criandoLista} className="text-amber disabled:opacity-50">
+                <Plus size={18} />
               </button>
-            )}
-          </div>
-        </div>
-
-        {listas.length === 0 ? (
-          <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
-        ) : (
-          <>
-            <div
-              ref={listasScrollRef}
-              onScroll={aoRolarListas}
-              className="flex overflow-x-auto snap-x snap-mandatory scroll-area"
-            >
-              {listas.map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => navigate(`/lista/${l.id}`)}
-                  className="w-full flex-shrink-0 snap-center text-left px-4"
-                >
-                  <div className="bg-surface border border-white/5 rounded-2xl p-4">
-                    <div className="text-sm text-ink font-display font-medium truncate mb-2">{l.nome}</div>
-                    <div className="flex gap-1">
-                      {l.lista_item.slice(0, 5).map((item) => (
-                        <div
-                          key={item.titulo_id}
-                          className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0 bg-cover bg-center"
-                          style={
-                            item.titulo?.imagem
-                              ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` }
-                              : undefined
-                          }
-                        />
-                      ))}
-                      {l.lista_item.length === 0 && (
-                        <div className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
-                      )}
-                    </div>
-                  </div>
+              {listas.length > 0 && (
+                <button onClick={() => setTodasListasAbertas(true)} className="text-muted">
+                  <LayoutGrid size={18} />
                 </button>
-              ))}
+              )}
             </div>
-            {listas.length > 1 && (
-              <div className="flex items-center justify-center gap-1.5 pt-2 pb-8">
-                {listas.map((_, i) => (
-                  <div
-                    key={i}
-                    className={`w-1.5 h-1.5 rounded-full ${i === listaAtualIndex ? 'bg-amber' : 'bg-white/15'}`}
-                  />
+          </div>
+
+          {listas.length === 0 ? (
+            <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
+          ) : (
+            <>
+              {/* Removida a classe scroll-area deste contêiner horizontal para corrigir a rolagem */}
+              <div
+                ref={listasScrollRef}
+                onScroll={aoRolarListas}
+                className="flex overflow-x-auto snap-x snap-mandatory"
+              >
+                {listas.map((l) => (
+                  <button
+                    key={l.id}
+                    onClick={() => navigate(`/lista/${l.id}`)}
+                    className="w-full flex-shrink-0 snap-center text-left px-4"
+                  >
+                    <div className="bg-surface border border-white/5 rounded-2xl p-4">
+                      <div className="text-sm text-ink font-display font-medium truncate mb-2">{l.nome}</div>
+                      <div className="flex gap-1">
+                        {l.lista_item.slice(0, 5).map((item) => (
+                          <div
+                            key={item.titulo_id}
+                            className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0 bg-cover bg-center"
+                            style={
+                              item.titulo?.imagem
+                                ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` }
+                                : undefined
+                            }
+                          />
+                        ))}
+                        {l.lista_item.length === 0 && (
+                          <div className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
+                        )}
+                      </div>
+                    </div>
+                  </button>
                 ))}
               </div>
-            )}
-          </>
-        )}
+              {listas.length > 1 && (
+                <div className="flex items-center justify-center gap-1.5 pt-2 pb-8">
+                  {listas.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-1.5 h-1.5 rounded-full ${i === listaAtualIndex ? 'bg-amber' : 'bg-white/15'}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {secaoExpandida && (
-        <div className="fixed inset-0 bg-bg z-50 flex flex-col">
+        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
             <button onClick={() => setSecaoExpandida(null)} className="text-muted">
               <ArrowLeft size={20} />
@@ -371,7 +375,7 @@ export default function Perfil() {
       )}
 
       {todasListasAbertas && (
-        <div className="fixed inset-0 bg-bg z-50 flex flex-col">
+        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
             <button onClick={() => setTodasListasAbertas(false)} className="text-muted">
               <ArrowLeft size={20} />
@@ -432,7 +436,8 @@ function Prateleira({ titulo, itens, navigate, aoExpandir }) {
       {itens.length === 0 ? (
         <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
       ) : (
-        <div className="flex gap-3 px-4 pb-2 overflow-x-auto scroll-area">
+        /* Removida a classe scroll-area deste contêiner horizontal para corrigir a rolagem */
+        <div className="flex gap-3 px-4 pb-2 overflow-x-auto">
           {itens.slice(0, 10).map((t) => (
             <div key={t.id} className="flex-shrink-0 w-28">
               <PosterCard imagem={t.imagem} nome={t.nome} onClick={() => navigate(`/titulo/${t.id}`)} />
