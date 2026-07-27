@@ -25,6 +25,13 @@ async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
   return todas
 }
 
+const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
+
+function urlPoster(caminho) {
+  if (!caminho) return null
+  return caminho.startsWith('http') ? caminho : `${POSTER_BASE_THUMB}${caminho}`
+}
+
 export default function Perfil() {
   const { user, perfil } = useAuth()
   const navigate = useNavigate()
@@ -214,7 +221,7 @@ export default function Perfil() {
                   <div
                     key={item.titulo_id}
                     className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0 bg-cover bg-center"
-                    style={item.titulo?.imagem ? { backgroundImage: `url(${item.titulo.imagem})` } : undefined}
+                    style={item.titulo?.imagem ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` } : undefined}
                   />
                 ))}
                 {l.lista_item.length === 0 && (
