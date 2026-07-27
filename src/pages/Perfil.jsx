@@ -68,7 +68,7 @@ export default function Perfil() {
             .select('watched_at, episode(duration, titulo_id)')
             .eq('user_id', user.id)
         ),
-        // 2. Filmes e Séries marcados como vistos pelo usuário (Corrigido para extrair .data)
+        // 2. Filmes e Séries marcados como vistos pelo usuário
         supabase
           .from('user_item')
           .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
@@ -222,8 +222,11 @@ export default function Perfil() {
 
   return (
     <>
-      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina */}
+      {/* Estilo CSS embutido para criar as barras horizontais amarelas finas e ocultar onde necessário */}
       <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none !important;
+        }
         .custom-scrollbar::-webkit-scrollbar {
           height: 5px !important;
           display: block !important;
@@ -307,12 +310,12 @@ export default function Perfil() {
             <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
           ) : (
             <>
-              {/* Estilização aplicada ao contêiner de listas com items-start e altura fixa */}
+              {/* Ocultada 100% da barra de rolagem horizontal e vertical usando no-scrollbar e scrollbarWidth none */}
               <div
                 ref={listasScrollRef}
                 onScroll={aoRolarListas}
-                className="flex flex-nowrap items-start overflow-x-auto snap-x snap-mandatory custom-scrollbar pb-3 h-[135px]"
-                style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
+                className="flex flex-nowrap items-start overflow-x-auto snap-x snap-mandatory no-scrollbar pb-3"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
               >
                 {listas.map((l) => (
                   <button
