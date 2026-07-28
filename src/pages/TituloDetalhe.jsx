@@ -28,9 +28,19 @@ export default function TituloDetalhe() {
     carregar()
   }, [id])
 
-  async function carregar() {
+async function carregar() {
     const idioma = idiomaAtual(perfil)
-    const tipoUrl = searchParams.get('tipo') // 'tv' ou 'movie'
+    
+    // Captura o tipo da URL via React Router
+    let tipoUrl = searchParams.get('tipo') 
+
+    // Fallback manual extremamente robusto para HashRouter no GitHub Pages
+    if (!tipoUrl) {
+      const hashParts = window.location.hash.split('?')
+      if (hashParts.length > 1) {
+        tipoUrl = new URLSearchParams(hashParts[1]).get('tipo')
+      }
+    }
 
     // Resolve o tipo de mídia priorizando a URL e usando o banco como fallback
     let tipo = tipoUrl
@@ -63,7 +73,7 @@ export default function TituloDetalhe() {
         .select('id, season_number, episode_number, episode_name')
         .eq('titulo_id', id)
         .order('season_number', { ascending: true })
-        .order('episode_number', { ascending: true })
+        .order('order_number', { ascending: true }) // ou episode_number dependendo do seu order original
       setEpisodios(eps ?? [])
 
       if (user) {
@@ -97,7 +107,6 @@ export default function TituloDetalhe() {
       setMinhaNota(rating?.rating_score ?? 0)
     }
   }
-
   async function adicionar(status = 'quero_ver') {
     await callFunction('adicionar-titulo', { tmdb_id: Number(id), media_type: mediaType, status })
     carregar()
