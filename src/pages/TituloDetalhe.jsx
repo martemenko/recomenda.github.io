@@ -7,17 +7,6 @@ import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 
-const STATUS_LABELS = { quero_ver: 'Quero ver', vendo: 'Vendo agora', visto: 'Já vi', interrompida: 'Interrompida' }
-
-// Opções do menu de status pra séries - "Interrompida" tira a série das listas
-// de "assistir a seguir" da SeriesPage, sem apagar o histórico já assistido.
-const OPCOES_STATUS_SERIE = [
-  { value: 'quero_ver', label: 'Quero ver' },
-  { value: 'vendo', label: 'Vendo agora' },
-  { value: 'visto', label: 'Já vi' },
-  { value: 'interrompida', label: 'Interrompida' },
-]
-
 export default function TituloDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -41,7 +30,7 @@ export default function TituloDetalhe() {
   async function carregar() {
     const idioma = idiomaAtual(perfil)
 
-    // Conteúdo (já no idioma certo, com fallback pro inglês, via cache-on-first-use)
+    // Conteúdo traduzido
     const traduzido = await callFunction('get-translate-title', { titulo_id: Number(id), idioma }).catch(() => null)
 
     const { data: base } = await supabase
@@ -120,6 +109,23 @@ export default function TituloDetalhe() {
     carregar()
   }
 
+  // Remove completamente o filme ou série da lista de acompanhamento (user_item)
+  async function deixarDeSeguir() {
+    setMenuStatusAberto(false)
+    const { error } = await supabase
+      .from('user_item')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('titulo_id', Number(id))
+    
+    if (error) {
+      console.error('Erro ao deixar de seguir:', error)
+      alert(`Não foi possível atualizar o status: ${error.message}`)
+      return
+    }
+    carregar()
+  }
+
   async function favoritar() {
     await callFunction('favoritar', { titulo_id: Number(id), favorito: !userItem?.favorito })
     carregar()
@@ -131,8 +137,6 @@ export default function TituloDetalhe() {
     carregar()
   }
 
-  // Episódios anteriores (temporada/episódio menor) ainda não assistidos - usado
-  // pra saber se vale perguntar "marcar os anteriores também?"
   function episodiosAntesDe(alvo) {
     return episodios.filter(
       (e) =>
@@ -142,7 +146,6 @@ export default function TituloDetalhe() {
     )
   }
 
-  // Grava (ou desfaz) a marcação de um lote de episódios de uma vez e recalcula o status
   async function aplicarMarcacao(episodeIds, desmarcar) {
     setConfirmacao(null)
     const { error } = desmarcar
@@ -173,7 +176,6 @@ export default function TituloDetalhe() {
 
   async function marcarEpisodio(episodeObj, marcado) {
     if (marcado) {
-      // Desmarcar é direto, sem perguntar nada
       await aplicarMarcacao([episodeObj.id], true)
       return
     }
@@ -250,20 +252,23 @@ export default function TituloDetalhe() {
 
         <div className="flex items-center gap-2 mt-4">
           {!userItem ? (
-            <button onClick={() => adicionar()} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
-              + Adicionar à lista
+            <button onClick={() => adicionar('quero_ver')} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
+              + Seguir
             </button>
           ) : mediaType === 'tv' ? (
             <button
               onClick={() => setMenuStatusAberto(true)}
               className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
             >
-              {STATUS_LABELS[userItem.status] ?? userItem.status}
+              {userItem.status === 'interrompida' ? 'Interrompida' : '✓ Seguindo'}
             </button>
           ) : (
-            <div className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium">
-              {STATUS_LABELS[userItem.status] ?? userItem.status}
-            </div>
+            <button
+              onClick={deixarDeSeguir}
+              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
+            >
+              ✓ Seguindo
+            </button>
           )}
 
           {mediaType === 'movie' && (
@@ -383,20 +388,30 @@ export default function TituloDetalhe() {
             className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-xs text-muted font-mono uppercase mb-2 px-1">Status da série</div>
-            <div className="flex flex-col gap-1">
-              {OPCOES_STATUS_SERIE.map((opcao) => (
+            <div className="text-xs text-muted font-mono uppercase mb-3 px-1">Gerenciar série</div>
+            <div className="flex flex-col gap-2">
+              {userItem?.status === 'interrompida' ? (
                 <button
-                  key={opcao.value}
-                  onClick={() => mudarStatus(opcao.value)}
-                  className={`flex items-center justify-between px-3 py-3 rounded-xl text-sm font-display font-medium ${
-                    userItem?.status === opcao.value ? 'bg-teal/15 text-teal' : 'text-ink'
-                  }`}
+                  onClick={() => mudarStatus('quero_ver')}
+                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
                 >
-                  {opcao.label}
-                  {userItem?.status === opcao.value && <Check size={16} />}
+                  <Check size={16} className="text-teal" /> Voltar a Seguir (Ativa)
                 </button>
-              ))}
+              ) : (
+                <button
+                  onClick={() => mudarStatus('interrompida')}
+                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
+                >
+                  Interrompida
+                </button>
+              )}
+
+              <button
+                onClick={deixarDeSeguir}
+                className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              >
+                Deixar de seguir
+              </button>
             </div>
             <button
               onClick={() => setMenuStatusAberto(false)}
