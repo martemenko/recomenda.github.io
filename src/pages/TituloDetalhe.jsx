@@ -50,6 +50,22 @@ export default function TituloDetalhe() {
     }
     setMediaType(tipo)
 
+    // Verifica se o título já existe localmente no banco
+    const { data: existente } = await supabase
+      .from('titulo')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle()
+
+    // Se o título for inédito no banco local, acionamos a ingestão base com status "none"
+    if (!existente && user) {
+      await callFunction('adicionar-titulo', { 
+        tmdb_id: Number(id), 
+        media_type: tipo, 
+        status: 'none' 
+      }).catch((err) => console.error('Erro ao registrar dados base:', err))
+    }
+
     // Envia o media_type de forma explícita na requisição de tradução
     const traduzido = await callFunction('get-translate-title', { 
       titulo_id: Number(id), 
@@ -61,7 +77,7 @@ export default function TituloDetalhe() {
       .from('titulo')
       .select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes')
       .eq('id', id)
-      .maybeSingle() // Garante retorno nulo em vez de travar a tela com erro 406 se a linha não existir
+      .maybeSingle()
     setTitulo({ ...base, ...(traduzido ?? {}) })
 
     if (tipo === 'tv') {
@@ -73,7 +89,7 @@ export default function TituloDetalhe() {
         .select('id, season_number, episode_number, episode_name')
         .eq('titulo_id', id)
         .order('season_number', { ascending: true })
-        .order('episode_number', { ascending: true }) // Corrigido de order_number para episode_number
+        .order('episode_number', { ascending: true })
       setEpisodios(eps ?? [])
 
       if (user) {
