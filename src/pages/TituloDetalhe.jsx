@@ -31,10 +31,8 @@ export default function TituloDetalhe() {
   async function carregar() {
     const idioma = idiomaAtual(perfil)
     
-    // Captura o tipo da URL via React Router
     let tipoUrl = searchParams.get('tipo') 
 
-    // Fallback manual extremamente robusto para HashRouter no GitHub Pages
     if (!tipoUrl) {
       const hashParts = window.location.hash.split('?')
       if (hashParts.length > 1) {
@@ -42,7 +40,6 @@ export default function TituloDetalhe() {
       }
     }
 
-    // Resolve o tipo de mídia priorizando a URL e usando o banco como fallback
     let tipo = tipoUrl
     if (!tipo) {
       const { data: serieRow } = await supabase.from('series').select('titulo_id').eq('titulo_id', id).maybeSingle()
@@ -50,14 +47,12 @@ export default function TituloDetalhe() {
     }
     setMediaType(tipo)
 
-    // Verifica se o título já existe localmente no banco
     const { data: existente } = await supabase
       .from('titulo')
       .select('id')
       .eq('id', id)
       .maybeSingle()
 
-    // Se o título for inédito no banco local, acionamos a ingestão base rápida com status "none"
     if (!existente && user) {
       await callFunction('adicionar-titulo', { 
         tmdb_id: Number(id), 
@@ -66,7 +61,7 @@ export default function TituloDetalhe() {
       }).catch((err) => console.error('Erro ao registrar dados base:', err))
     }
 
-    // LOTE CONCORRENTE PARALELO: Dispara todas as buscas ao mesmo tempo para o banco local
+    // LOTE CONCORRENTE PARALELO: Velocidade máxima de renderização
     const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
       callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
       supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
@@ -91,29 +86,53 @@ export default function TituloDetalhe() {
     setMinhaNota(rating?.rating_score ?? 0)
   }
 
+  // Otimização: Gravação direta e otimista na tabela user_item (sem chamar função na nuvem)
   async function adicionar(status = 'quero_ver') {
-    await callFunction('adicionar-titulo', { tmdb_id: Number(id), media_type: mediaType, status })
-    carregar()
+    const estadoTemporario = { status, favorito: false }
+    setUserItem(estadoTemporario) // Atualização Visual Instantânea
+
+    const { error } = await supabase.from('user_item').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      status,
+      favorito: false,
+    })
+
+    if (error) {
+      console.error('Erro ao seguir:', error)
+      setUserItem(null)
+      alert(`Não foi possível salvar: ${error.message}`)
+    } else {
+      carregar()
+    }
   }
 
   async function mudarStatus(novoStatus) {
     setMenuStatusAberto(false)
+    
+    // Atualização Visual Instantânea
+    setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
+
     const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
       titulo_id: Number(id),
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
+    
     if (error) {
       console.error('Erro ao mudar status:', error)
-      alert(`Não foi possível atualizar o status: ${error.message}`)
-      return
+      carregar() // Reverte estado se falhar
     }
-    carregar()
   }
 
   async function deixarDeSeguir() {
     setMenuStatusAberto(false)
+    
+    // Atualização Visual Instantânea (Desmarca de imediato na interface)
+    const estadoAntes = userItem
+    setUserItem(null)
+
     const { error } = await supabase
       .from('user_item')
       .delete()
@@ -122,15 +141,28 @@ export default function TituloDetalhe() {
     
     if (error) {
       console.error('Erro ao deixar de seguir:', error)
-      alert(`Não foi possível atualizar o status: ${error.message}`)
-      return
+      setUserItem(estadoAntes) // Reverte se falhar
     }
-    carregar()
   }
 
+  // Otimização: Heart de favoritar reage instantaneamente sem esperar a rede
   async function favoritar() {
-    await callFunction('favoritar', { titulo_id: Number(id), favorito: !userItem?.favorito })
-    carregar()
+    const novoFav = !userItem?.favorito
+    
+    // Atualização Visual Instantânea (Troca o preenchimento do coração na hora)
+    setUserItem(prev => prev ? { ...prev, favorito: novoFav } : { status: 'quero_ver', favorito: novoFav })
+
+    const { error } = await supabase.from('user_item').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      status: userItem?.status ?? 'quero_ver',
+      favorito: novoFav,
+    })
+
+    if (error) {
+      console.error('Erro ao favoritar:', error)
+      carregar() // Reverte se falhar
+    }
   }
 
   async function avaliar(nota) {
@@ -148,32 +180,42 @@ export default function TituloDetalhe() {
     )
   }
 
+  // Otimização: Marcações em massa agora acendem os checks em 0ms
   async function aplicarMarcacao(episodeIds, desmarcar) {
     setConfirmacao(null)
-    const { error } = desmarcar
-      ? await supabase.from('watched_episode').delete().eq('user_id', user.id).in('episode_id', episodeIds)
-      : await supabase.from('watched_episode').upsert(episodeIds.map((eid) => ({ user_id: user.id, episode_id: eid })))
-    if (error) console.error('Erro ao marcar episódios:', error)
 
-    const { data: assistidosAgora, error: erroAssistidos } = await supabase
-      .from('watched_episode')
-      .select('episode_id')
-      .eq('user_id', user.id)
-      .in('episode_id', episodios.map((e) => e.id))
-    if (erroAssistidos) console.error('Erro ao recontar assistidos:', erroAssistidos)
-
-    const totalAssistidos = assistidosAgora?.length ?? 0
-    const novoStatus = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= episodios.length ? 'visto' : 'vendo'
-
-    const { error: erroStatus } = await supabase.from('user_item').upsert({
-      user_id: user.id,
-      titulo_id: Number(id),
-      status: novoStatus,
-      favorito: userItem?.favorito ?? false,
+    // 1. Atualização Otimista Instantânea dos estados locais
+    const novasMarcadas = new Set(assistidos)
+    episodeIds.forEach(eid => {
+      if (desmarcar) novasMarcadas.delete(eid)
+      else novasMarcadas.add(eid)
     })
-    if (erroStatus) console.error('Erro ao atualizar status do user_item:', erroStatus)
+    
+    const totalAssistidos = novasMarcadas.size
+    const novoStatus = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= episodios.length ? 'visto' : 'vendo'
+    
+    setAssistidos(novasMarcadas)
+    setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
 
-    carregar()
+    // 2. Processa a sincronização com o banco em segundo plano de forma silenciosa
+    try {
+      const { error } = desmarcar
+        ? await supabase.from('watched_episode').delete().eq('user_id', user.id).in('episode_id', episodeIds)
+        : await supabase.from('watched_episode').upsert(episodeIds.map((eid) => ({ user_id: user.id, episode_id: eid })))
+      
+      if (error) throw error
+
+      const { error: erroStatus } = await supabase.from('user_item').upsert({
+        user_id: user.id,
+        titulo_id: Number(id),
+        status: novoStatus,
+        favorito: userItem?.favorito ?? false,
+      })
+      if (erroStatus) throw erroStatus
+    } catch (err) {
+      console.error('[Importador] Erro na gravação:', err)
+      carregar() // Se der erro, puxa os dados corretos do banco de volta
+    }
   }
 
   async function marcarEpisodio(episodeObj, marcado) {
@@ -215,13 +257,21 @@ export default function TituloDetalhe() {
 
   async function marcarFilmeVisto() {
     const novoStatus = userItem?.status === 'visto' ? 'quero_ver' : 'visto'
-    await supabase.from('user_item').upsert({
+    
+    // Atualização Visual Instantânea (O botão de visto se acende no mesmo instante)
+    setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
+
+    const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
       titulo_id: Number(id),
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
-    carregar()
+    
+    if (error) {
+      console.error('Erro ao marcar filme visto:', error)
+      carregar() // Reverte se falhar
+    }
   }
 
   if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
