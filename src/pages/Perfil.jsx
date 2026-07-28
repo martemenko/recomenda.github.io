@@ -222,7 +222,7 @@ export default function Perfil() {
 
   return (
     <>
-      {/* Estilo CSS embutido para criar as barras horizontais amarelas finas e ocultar onde necessário */}
+      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina */}
       <style>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none !important;
@@ -390,36 +390,46 @@ export default function Perfil() {
             <button onClick={() => setTodasListasAbertas(false)} className="text-muted">
               <ArrowLeft size={20} />
             </button>
-            <div className="text-base text-ink font-display font-semibold">Minhas listas</div>
+            <div className="text-base text-ink font-display font-semibold font-medium">Minhas listas</div>
           </div>
+          {/* Layout de prateleira vertical unificado baseado na página de perfil com altura fixa e sem scrollbars */}
           <div className="flex-1 overflow-y-auto scroll-area px-4 py-4 space-y-4">
             {listas.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => {
-                  setTodasListasAbertas(false)
-                  navigate(`/lista/${l.id}`)
-                }}
-                className="w-full text-left block"
-              >
-                <div className="text-sm text-ink font-display font-medium truncate mb-1.5">{l.nome}</div>
-                <div className="flex gap-1">
-                  {l.lista_item.slice(0, 5).map((item) => (
-                    <div
-                      key={item.titulo_id}
-                      className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0 bg-cover bg-center"
-                      style={
-                        item.titulo?.imagem
-                          ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` }
-                          : undefined
-                      }
-                    />
-                  ))}
-                  {l.lista_item.length === 0 && (
-                    <div className="w-10 aspect-[2/3] rounded-sm bg-surface2 flex-shrink-0" />
-                  )}
+              <div key={l.id} className="mb-2">
+                <div className="flex items-center justify-between pr-4">
+                  <div className="text-sm font-display font-medium text-ink truncate mb-1 pl-1">{l.nome}</div>
+                  <button
+                    onClick={() => {
+                      setTodasListasAbertas(false)
+                      navigate(`/lista/${l.id}`)
+                    }}
+                    className="text-muted"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
-              </button>
+                {l.lista_item.length === 0 ? (
+                  <div className="pl-1 pb-2 text-muted text-sm font-mono">Nenhum título nessa lista ainda.</div>
+                ) : (
+                  <div
+                    className="flex flex-nowrap items-start gap-3 pb-3 overflow-x-auto custom-scrollbar h-[220px]"
+                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
+                  >
+                    {l.lista_item.slice(0, 10).map((item) => (
+                      <div key={item.titulo_id} className="flex-shrink-0 w-28">
+                        <PosterCard
+                          imagem={item.titulo?.imagem}
+                          nome={item.titulo?.nome}
+                          onClick={() => {
+                            setTodasListasAbertas(false)
+                            navigate(`/titulo/${item.titulo_id}`)
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
