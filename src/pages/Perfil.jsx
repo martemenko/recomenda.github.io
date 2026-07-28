@@ -222,7 +222,7 @@ export default function Perfil() {
 
   return (
     <>
-      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina */}
+      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina e fixar o menu inferior na borda */}
       <style>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none !important;
@@ -242,6 +242,12 @@ export default function Perfil() {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #e2b144 !important;
         }
+        /* Força a fixação e o alinhamento correto do menu de navegação à borda da tela */
+        nav, footer, [class*="bottom-"] {
+          bottom: 0 !important;
+          margin-bottom: 0 !important;
+          padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+        }
       `}</style>
 
       <TopBar
@@ -252,7 +258,9 @@ export default function Perfil() {
           </button>
         }
       />
-      <div className="flex-1 overflow-y-auto scroll-area">
+      
+      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu */}
+      <div className="flex-1 overflow-y-auto scroll-area pb-24">
         <div className="px-4 py-3 text-sm text-muted font-mono">{perfil?.username}</div>
 
         <SectionLabel>Estatísticas</SectionLabel>

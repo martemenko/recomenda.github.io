@@ -250,6 +250,15 @@ export default function SeriesPage() {
 
   return (
     <>
+      {/* Corrige o alinhamento do menu inferior de navegação na borda física da tela */}
+      <style>{`
+        nav, footer, [class*="bottom-"] {
+          bottom: 0 !important;
+          margin-bottom: 0 !important;
+          padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+        }
+      `}</style>
+
       <TopBar title="Séries" />
       <SubTabs
         tabs={[{ value: 'lista', label: 'Minha Lista' }, { value: 'em_breve', label: 'Em breve' }]}
@@ -257,7 +266,8 @@ export default function SeriesPage() {
         onChange={setAba}
       />
 
-      <div className="flex-1 overflow-y-auto scroll-area">
+      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu */}
+      <div className="flex-1 overflow-y-auto scroll-area pb-24">
         {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
 
         {!carregando && aba === 'lista' && (

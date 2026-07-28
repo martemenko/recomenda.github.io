@@ -61,7 +61,7 @@ export default function FilmesPage() {
   async function carregarEmBreve() {
     setCarregando(true)
     try {
-      const { results } = await callFunction('soon-movies', { genre_id: generoAtivo, page: 1 })
+      const { results } = await callFunction('em-breve-filmes', { genre_id: generoAtivo, page: 1 })
       setEmBreve(results ?? [])
     } catch (e) {
       setEmBreve([])
@@ -81,11 +81,12 @@ export default function FilmesPage() {
       <div className="flex-1 overflow-y-auto scroll-area">
         {aba === 'lista' && (
           <>
-            <SectionLabel>Quero ver</SectionLabel>
+            {/* Rótulo alterado de "Quero ver" para "Seguindo" */}
+            <SectionLabel>Seguindo</SectionLabel>
             {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
             {!carregando && meusFilmes.length === 0 && (
               <div className="px-4 py-6 text-muted text-sm font-mono text-center">
-                Nenhum filme na lista ainda. Busque algo em Explorar.
+                Nenhum filme seguido ainda. Busque algo em Explorar.
               </div>
             )}
             <div className="grid grid-cols-3 gap-3 px-4 pb-6">
@@ -94,7 +95,7 @@ export default function FilmesPage() {
                   key={f.titulo_id}
                   imagem={f.titulo.imagem}
                   nome={f.titulo.nome}
-                  onClick={() => navigate(`/titulo/${f.titulo_id}`)}
+                  onClick={() => navigate(`/titulo/${f.titulo_id}?tipo=movie`)} // Garante o envio do tipo movie
                 />
               ))}
             </div>
