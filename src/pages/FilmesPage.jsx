@@ -61,7 +61,7 @@ export default function FilmesPage() {
   async function carregarEmBreve() {
     setCarregando(true)
     try {
-      const { results } = await callFunction('em-breve-filmes', { genre_id: generoAtivo, page: 1 })
+      const { results } = await callFunction('soon-movies', { genre_id: generoAtivo, page: 1 })
       setEmBreve(results ?? [])
     } catch (e) {
       setEmBreve([])
