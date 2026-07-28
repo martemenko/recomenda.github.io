@@ -57,7 +57,7 @@ export default function TituloDetalhe() {
       .eq('id', id)
       .maybeSingle()
 
-    // Se o título for inédito no banco local, acionamos a ingestão base com status "none"
+    // Se o título for inédito no banco local, acionamos a ingestão base rápida com status "none"
     if (!existente && user) {
       await callFunction('adicionar-titulo', { 
         tmdb_id: Number(id), 
@@ -66,62 +66,29 @@ export default function TituloDetalhe() {
       }).catch((err) => console.error('Erro ao registrar dados base:', err))
     }
 
-    // Envia o media_type de forma explícita na requisição de tradução
-    const traduzido = await callFunction('get-translate-title', { 
-      titulo_id: Number(id), 
-      idioma, 
-      media_type: tipo 
-    }).catch(() => null)
+    // LOTE CONCORRENTE PARALELO: Dispara todas as buscas ao mesmo tempo para o banco local
+    const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
+      callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
+      supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
+      tipo === 'tv'
+        ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
+        : supabase.from('elenco_movie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? []),
+      tipo === 'tv'
+        ? supabase.from('episode').select('id, season_number, episode_number, episode_name').eq('titulo_id', id).order('season_number', { ascending: true }).order('episode_number', { ascending: true }).then(res => res.data ?? [])
+        : [],
+      user && tipo === 'tv'
+        ? supabase.from('watched_episode').select('episode_id, episode!inner(titulo_id)').eq('user_id', user.id).eq('episode.titulo_id', id).then(res => res.data ?? [])
+        : [],
+      user ? supabase.from('user_item').select('status, favorito').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
+      user ? supabase.from('user_rating').select('rating_score').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null
+    ])
 
-    const { data: base } = await supabase
-      .from('titulo')
-      .select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes')
-      .eq('id', id)
-      .maybeSingle()
     setTitulo({ ...base, ...(traduzido ?? {}) })
-
-    if (tipo === 'tv') {
-      const { data: cast } = await supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id)
-      setElenco(cast ?? [])
-
-      const { data: eps } = await supabase
-        .from('episode')
-        .select('id, season_number, episode_number, episode_name')
-        .eq('titulo_id', id)
-        .order('season_number', { ascending: true })
-        .order('episode_number', { ascending: true })
-      setEpisodios(eps ?? [])
-
-      if (user) {
-        const { data: watched } = await supabase
-          .from('watched_episode')
-          .select('episode_id')
-          .eq('user_id', user.id)
-          .in('episode_id', (eps ?? []).map((e) => e.id))
-        setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
-      }
-    } else {
-      const { data: cast } = await supabase.from('elenco_movie').select('personagem, ator(name, image)').eq('titulo_id', id)
-      setElenco(cast ?? [])
-    }
-
-    if (user) {
-      const { data: item } = await supabase
-        .from('user_item')
-        .select('status, favorito')
-        .eq('user_id', user.id)
-        .eq('titulo_id', id)
-        .maybeSingle()
-      setUserItem(item)
-
-      const { data: rating } = await supabase
-        .from('user_rating')
-        .select('rating_score')
-        .eq('user_id', user.id)
-        .eq('titulo_id', id)
-        .maybeSingle()
-      setMinhaNota(rating?.rating_score ?? 0)
-    }
+    setElenco(cast)
+    setEpisodios(eps)
+    setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
+    setUserItem(item)
+    setMinhaNota(rating?.rating_score ?? 0)
   }
 
   async function adicionar(status = 'quero_ver') {
