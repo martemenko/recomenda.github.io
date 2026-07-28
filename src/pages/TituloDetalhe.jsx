@@ -61,7 +61,7 @@ export default function TituloDetalhe() {
       .from('titulo')
       .select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes')
       .eq('id', id)
-      .maybeSingle() // Modificado de single() para maybeSingle() para evitar erro 406 se a linha não existir
+      .maybeSingle() // Garante retorno nulo em vez de travar a tela com erro 406 se a linha não existir
     setTitulo({ ...base, ...(traduzido ?? {}) })
 
     if (tipo === 'tv') {
