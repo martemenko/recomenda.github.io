@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Heart, ChevronLeft, Star, Check } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -10,6 +10,7 @@ const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 export default function TituloDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams() // Gancho adicionado para ler parâmetros da URL
   const { user, perfil } = useAuth()
 
   const [titulo, setTitulo] = useState(null)
@@ -29,9 +30,22 @@ export default function TituloDetalhe() {
 
   async function carregar() {
     const idioma = idiomaAtual(perfil)
+    const tipoUrl = searchParams.get('tipo') // 'tv' ou 'movie'
 
-    // Conteúdo traduzido
-    const traduzido = await callFunction('get-translate-title', { titulo_id: Number(id), idioma }).catch(() => null)
+    // Resolve o tipo de mídia priorizando a URL e usando o banco como fallback
+    let tipo = tipoUrl
+    if (!tipo) {
+      const { data: serieRow } = await supabase.from('series').select('titulo_id').eq('titulo_id', id).maybeSingle()
+      tipo = serieRow ? 'tv' : 'movie'
+    }
+    setMediaType(tipo)
+
+    // Envia o media_type de forma explícita na requisição de tradução
+    const traduzido = await callFunction('get-translate-title', { 
+      titulo_id: Number(id), 
+      idioma, 
+      media_type: tipo 
+    }).catch(() => null)
 
     const { data: base } = await supabase
       .from('titulo')
@@ -39,10 +53,6 @@ export default function TituloDetalhe() {
       .eq('id', id)
       .single()
     setTitulo({ ...base, ...(traduzido ?? {}) })
-
-    const { data: serieRow } = await supabase.from('series').select('titulo_id').eq('titulo_id', id).maybeSingle()
-    const tipo = serieRow ? 'tv' : 'movie'
-    setMediaType(tipo)
 
     if (tipo === 'tv') {
       const { data: cast } = await supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id)
@@ -109,7 +119,6 @@ export default function TituloDetalhe() {
     carregar()
   }
 
-  // Remove completamente o filme ou série da lista de acompanhamento (user_item)
   async function deixarDeSeguir() {
     setMenuStatusAberto(false)
     const { error } = await supabase
