@@ -1,5 +1,4 @@
-// Edge Function: adicionar-titulo
-// Chamada quando o usuário clica em "Adicionar/Seguir" ou para ingerir metadados base de forma paralela.
+// veio do git
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
