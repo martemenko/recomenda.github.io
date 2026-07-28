@@ -10,7 +10,7 @@ const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 export default function TituloDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams() // Gancho adicionado para ler parâmetros da URL
+  const [searchParams] = useSearchParams()
   const { user, perfil } = useAuth()
 
   const [titulo, setTitulo] = useState(null)
@@ -28,7 +28,7 @@ export default function TituloDetalhe() {
     carregar()
   }, [id])
 
-async function carregar() {
+  async function carregar() {
     const idioma = idiomaAtual(perfil)
     
     // Captura o tipo da URL via React Router
@@ -61,7 +61,7 @@ async function carregar() {
       .from('titulo')
       .select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes')
       .eq('id', id)
-      .single()
+      .maybeSingle() // Modificado de single() para maybeSingle() para evitar erro 406 se a linha não existir
     setTitulo({ ...base, ...(traduzido ?? {}) })
 
     if (tipo === 'tv') {
@@ -73,7 +73,7 @@ async function carregar() {
         .select('id, season_number, episode_number, episode_name')
         .eq('titulo_id', id)
         .order('season_number', { ascending: true })
-        .order('order_number', { ascending: true }) // ou episode_number dependendo do seu order original
+        .order('episode_number', { ascending: true }) // Corrigido de order_number para episode_number
       setEpisodios(eps ?? [])
 
       if (user) {
@@ -107,6 +107,7 @@ async function carregar() {
       setMinhaNota(rating?.rating_score ?? 0)
     }
   }
+
   async function adicionar(status = 'quero_ver') {
     await callFunction('adicionar-titulo', { tmdb_id: Number(id), media_type: mediaType, status })
     carregar()
