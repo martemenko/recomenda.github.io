@@ -7,6 +7,14 @@ import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 
+// Função auxiliar para formatar datas de YYYY-MM-DD para DD/MM/YYYY
+function formatarData(dataStr) {
+  if (!dataStr) return 'TBA'
+  const partes = dataStr.split('-')
+  if (partes.length < 3) return 'TBA'
+  return `${partes[2]}/${partes[1]}/${partes[0]}`
+}
+
 export default function TituloDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -23,6 +31,13 @@ export default function TituloDetalhe() {
   const [temporadaAberta, setTemporadaAberta] = useState(null)
   const [confirmacao, setConfirmacao] = useState(null)
   const [menuStatusAberto, setMenuStatusAberto] = useState(false)
+
+  // Obtém a data local de hoje em formato YYYY-MM-DD absoluto e seguro contra fuso horário
+  const hojeLocal = new Date()
+  const ano = hojeLocal.getFullYear()
+  const mes = String(hojeLocal.getMonth() + 1).padStart(2, '0')
+  const dia = String(hojeLocal.getDate()).padStart(2, '0')
+  const hojeString = `${ano}-${mes}-${dia}`
 
   useEffect(() => {
     carregar()
@@ -63,7 +78,7 @@ export default function TituloDetalhe() {
       }).catch((err) => console.error('Erro ao registrar dados base:', err))
     }
 
-    // --- FUNÇÕES AUXILIARES DE PAGINAÇÃO CONCORRENTE (SUPERAM O LIMITE DE 1000 LINHAS) ---
+    // Funções auxiliares locais de paginação concorrente para superar o limite de 1000 linhas
     const obterEpisodiosPaginados = async () => {
       if (tipo !== 'tv') return []
       let eps = []
@@ -72,7 +87,7 @@ export default function TituloDetalhe() {
       while (true) {
         const { data, error } = await supabase
           .from('episode')
-          .select('id, season_number, episode_number, episode_name')
+          .select('id, season_number, episode_number, episode_name, launch_date')
           .eq('titulo_id', id)
           .order('season_number', { ascending: true })
           .order('episode_number', { ascending: true })
@@ -115,7 +130,7 @@ export default function TituloDetalhe() {
       return list
     }
 
-    // --- LOTE PARALELO 1: Dispara TODAS as buscas simultaneamente para o banco local ---
+    // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo
     const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
       callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
       supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
@@ -135,7 +150,7 @@ export default function TituloDetalhe() {
     setUserItem(item)
     setMinhaNota(rating?.rating_score ?? 0)
 
-    // --- LOTE PARALELO 2: Sincronização silenciosa em background de novas temporadas ---
+    // Sincronização em Background Reativa silenciosa
     if (existente && tipo === 'tv' && user) {
       callFunction('adicionar-titulo', { 
         tmdb_id: Number(id), 
@@ -143,7 +158,6 @@ export default function TituloDetalhe() {
         status: 'none' 
       })
       .then(async () => {
-        // Se a sincronização trouxer novas temporadas (como 22 e 23), recarrega os episódios localmente em tempo real
         const novosEps = await obterEpisodiosPaginados()
         if (novosEps && novosEps.length > eps.length) {
           setEpisodios(novosEps)
@@ -243,6 +257,7 @@ export default function TituloDetalhe() {
     return episodios.filter(
       (e) =>
         !assistidos.has(e.id) &&
+        e.launch_date && e.launch_date <= hojeString && // Apenas lançados
         (e.season_number < alvo.season_number ||
           (e.season_number === alvo.season_number && e.episode_number < alvo.episode_number)),
     )
@@ -309,24 +324,26 @@ export default function TituloDetalhe() {
       await aplicarMarcacao(epsDaTemporada.map((e) => e.id), true)
       return
     }
-    const faltantes = epsDaTemporada.filter((e) => !assistidos.has(e.id))
-    const temporadasAnteriores = episodios.filter((e) => e.season_number < seasonNumber && !assistidos.has(e.id))
+
+    // Filtra para marcar apenas episódios já lançados (evitando marcar futuros!)
+    const faltantesLancados = epsDaTemporada.filter((e) => !assistidos.has(e.id) && e.launch_date && e.launch_date <= hojeString)
+    const temporadasAnteriores = episodios.filter((e) => e.season_number < seasonNumber && !assistidos.has(e.id) && e.launch_date && e.launch_date <= hojeString)
 
     if (temporadasAnteriores.length > 0) {
       setConfirmacao({
         mensagem: `Tem temporada${temporadasAnteriores.length > 1 ? 's' : ''} anterior${temporadasAnteriores.length > 1 ? 'es' : ''} com episódio não assistido. Quer marcar ${temporadasAnteriores.length > 1 ? 'elas' : 'ela'} também como vista${temporadasAnteriores.length > 1 ? 's' : ''}?`,
-        aoConfirmar: () => aplicarMarcacao([...temporadasAnteriores.map((e) => e.id), ...faltantes.map((e) => e.id)], false),
-        aoRecusar: () => aplicarMarcacao(faltantes.map((e) => e.id), false),
+        aoConfirmar: () => aplicarMarcacao([...temporadasAnteriores.map((e) => e.id), ...faltantesLancados.map((e) => e.id)], false),
+        aoRecusar: () => aplicarMarcacao(faltantesLancados.map((e) => e.id), false),
       })
     } else {
-      await aplicarMarcacao(faltantes.map((e) => e.id), false)
+      await aplicarMarcacao(faltantesLancados.map((e) => e.id), false)
     }
   }
 
   async function marcarFilmeVisto() {
     const novoStatus = userItem?.status === 'visto' ? 'quero_ver' : 'visto'
     
-    // Atualização Visual Instantânea (O botão de visto se acende no mesmo instante)
+    // Atualização Visual Instantânea
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
 
     const { error } = await supabase.from('user_item').upsert({
@@ -364,184 +381,4 @@ export default function TituloDetalhe() {
           <span>{titulo.genero}</span>
           {titulo.media_rating && (
             <span className="flex items-center gap-1 text-teal">
-              <Star size={12} fill="currentColor" /> {titulo.media_rating} ({titulo.total_avaliacoes})
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-ink mt-3 leading-relaxed">{titulo.sinopse}</p>
-
-        <div className="flex items-center gap-2 mt-4">
-          {!userItem ? (
-            <button onClick={() => adicionar('quero_ver')} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
-              + Seguir
-            </button>
-          ) : mediaType === 'tv' ? (
-            <button
-              onClick={() => setMenuStatusAberto(true)}
-              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
-            >
-              {userItem.status === 'interrompida' ? 'Interrompida' : '✓ Seguindo'}
-            </button>
-          ) : (
-            <button
-              onClick={deixarDeSeguir}
-              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
-            >
-              ✓ Seguindo
-            </button>
-          )}
-
-          {mediaType === 'movie' && (
-            <button
-              onClick={marcarFilmeVisto}
-              aria-label="Marcar como visto"
-              className={`flex-shrink-0 w-12 h-12 rounded-2xl border flex items-center justify-center ${
-                userItem?.status === 'visto' ? 'bg-teal border-teal text-bg shadow-[0_0_14px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
-              }`}
-            >
-              <Check size={20} />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 justify-center mt-4">
-          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-            <button key={n} onClick={() => avaliar(n)}>
-              <Star size={16} fill={n <= minhaNota ? '#f3c255' : 'none'} className={n <= minhaNota ? 'text-amber' : 'text-muted'} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <SectionLabel>Elenco</SectionLabel>
-      <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
-        {elenco.map((c, i) => (
-          <div key={i} className="flex-shrink-0 w-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden">
-              {c.ator?.image && <img src={`https://image.tmdb.org/t/p/w200${c.ator.image}`} className="w-full h-full object-cover" />}
-            </div>
-            <div className="text-[10px] text-ink mt-1 truncate">{c.ator?.name}</div>
-            <div className="text-[9px] text-muted truncate">{c.personagem}</div>
-          </div>
-        ))}
-      </div>
-
-      {mediaType === 'tv' && (
-        <>
-          <SectionLabel>Episódios</SectionLabel>
-          <div className="px-4 pb-8 flex flex-col gap-2">
-            {temporadas.map((t) => {
-              const epsDaTemporada = episodios.filter((e) => e.season_number === t)
-              const assistidosCount = epsDaTemporada.filter((e) => assistidos.has(e.id)).length
-              const todasAssistidas = assistidosCount === epsDaTemporada.length
-              return (
-                <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
-                      className="flex-1 flex justify-between px-3 py-2 text-sm text-ink font-mono"
-                    >
-                      Temporada {t}
-                      <span className="text-muted">{assistidosCount}/{epsDaTemporada.length}</span>
-                    </button>
-                    <button
-                      onClick={() => marcarTemporada(t, todasAssistidas)}
-                      aria-label="Marcar temporada como vista"
-                      className={`w-8 h-8 mr-2 flex-shrink-0 rounded-full flex items-center justify-center border ${
-                        todasAssistidas ? 'bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
-                      }`}
-                    >
-                      <Check size={14} />
-                    </button>
-                  </div>
-                  {temporadaAberta === t && (
-                    <div className="flex flex-col">
-                      {epsDaTemporada.map((e) => {
-                        const marcado = assistidos.has(e.id)
-                        return (
-                          <button
-                            key={e.id}
-                            onClick={() => marcarEpisodio(e, marcado)}
-                            className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2"
-                          >
-                            <span className={marcado ? 'text-muted' : 'text-ink'}>
-                              E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
-                            </span>
-                            <span className={marcado ? 'text-teal' : 'text-muted'}>{marcado ? '✓' : '○'}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-
-      {confirmacao && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
-          <div className="bg-surface border border-white/10 rounded-2xl p-5 max-w-[340px] w-full">
-            <p className="text-sm text-ink mb-4 leading-relaxed">{confirmacao.mensagem}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={confirmacao.aoRecusar}
-                className="flex-1 border border-white/15 rounded-xl py-2.5 text-sm text-muted font-display font-medium"
-              >
-                Não
-              </button>
-              <button
-                onClick={confirmacao.aoConfirmar}
-                className="flex-1 bg-amber text-bg rounded-xl py-2.5 text-sm font-display font-semibold shadow-[0_0_14px_rgba(243,194,85,0.35)]"
-              >
-                Sim
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {menuStatusAberto && (
-        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={() => setMenuStatusAberto(false)}>
-          <div
-            className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-xs text-muted font-mono uppercase mb-3 px-1">Gerenciar série</div>
-            <div className="flex flex-col gap-2">
-              {userItem?.status === 'interrompida' ? (
-                <button
-                  onClick={() => mudarStatus('quero_ver')}
-                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
-                >
-                  <Check size={16} className="text-teal" /> Voltar a Seguir (Ativa)
-                </button>
-              ) : (
-                <button
-                  onClick={() => mudarStatus('interrompida')}
-                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
-                >
-                  Interrompida
-                </button>
-              )}
-
-              <button
-                onClick={deixarDeSeguir}
-                className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20"
-              >
-                Deixar de seguir
-              </button>
-            </div>
-            <button
-              onClick={() => setMenuStatusAberto(false)}
-              className="w-full mt-2 py-2.5 text-sm text-muted font-display font-medium"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+              <Star size={12} fill="currentColor
