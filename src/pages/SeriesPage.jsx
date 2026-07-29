@@ -5,8 +5,7 @@ import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
-import EpisodioRow from '../components/EpisodioRow'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Check } from 'lucide-react' // Adicionado Check do Lucide-React
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
@@ -173,13 +172,7 @@ export default function SeriesPage() {
 
       // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
       const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
-      
-      // Correção de Fuso Horário Local: Obtém a data real de hoje baseada no relógio do usuário
-      const hojeLocal = new Date()
-      const ano = hojeLocal.getFullYear()
-      const mes = String(hojeLocal.getMonth() + 1).padStart(2, '0')
-      const dia = String(hojeLocal.getDate()).padStart(2, '0')
-      const hojeString = `${ano}-${mes}-${dia}` // Formato YYYY-MM-DD local absoluto [1]
+      const hoje = new Date()
 
       // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
       const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
@@ -188,8 +181,8 @@ export default function SeriesPage() {
         supabase
           .from('episode')
           .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-          .in('titulo_id', tituloIds)
-          .gte('launch_date', hojeString) // Correção: Alterado de .gt para .gte e usando o fuso horário local [2]
+          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
+          .gt('launch_date', hoje.toISOString().slice(0, 10))
           .order('launch_date', { ascending: true })
           .then(res => {
             if (res.error) console.error('Erro ao buscar em breve:', res.error)
@@ -397,21 +390,61 @@ export default function SeriesPage() {
             {historico.length > 0 && (
               <>
                 <SectionLabel>Histórico de exibição</SectionLabel>
-                {/* opacity-40 e hover:opacity-75 para deixar o histórico visualmente mais escuro que a lista ativa */}
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-2.5 px-4 pb-4">
                   {historico.map((h, i) => (
-                    <div key={`${h.episode.id}-${i}`} className="opacity-40 hover:opacity-75 transition-opacity duration-200">
-                      <EpisodioRow
-                        posterPath={h.episode.titulo?.imagem}
-                        tituloNome={h.episode.titulo?.nome}
-                        temporada={h.episode.season_number}
-                        episodio={h.episode.episode_number}
-                        episodioNome={h.episode.episode_name}
-                        marcado={true}
-                        saindo={saindoIds.has(h.episode.id)}
-                        onMarcar={() => marcarAssistido(h.episode.id, true)}
-                        onAbrirTitulo={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
-                      />
+                    <div 
+                      key={`${h.episode.id}-${i}`} 
+                      className="opacity-40 hover:opacity-75 transition-all duration-300"
+                    >
+                      <div className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between">
+                        {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                        <div
+                          onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                          className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
+                          style={
+                            h.episode.titulo?.imagem
+                              ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${h.episode.titulo.imagem})` }
+                              : undefined
+                          }
+                        />
+
+                        {/* Centro: Informações do Episódio */}
+                        <div className="flex-1 flex flex-col justify-center min-w-0">
+                          <div className="flex">
+                            {/* Nome da Série (Clica para ir para a série) */}
+                            <button
+                              onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                              className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider bg-white/5 border border-white/5 px-2 py-0.5 rounded-full"
+                            >
+                              {h.episode.titulo?.nome} <ChevronRight size={10} strokeWidth={3} />
+                            </button>
+                          </div>
+                          
+                          {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                          <button
+                            onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                            className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                          >
+                            S{String(h.episode.season_number).padStart(2, '0')} | E{String(h.episode.episode_number).padStart(2, '0')}
+                          </button>
+
+                          {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                          <button
+                            onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                            className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                          >
+                            {h.episode.episode_name || 'TBA'}
+                          </button>
+                        </div>
+
+                        {/* Lado Direito: Círculo de Visto */}
+                        <button
+                          onClick={() => marcarAssistido(h.episode.id, true)}
+                          className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center border bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.45)]"
+                        >
+                          <Check size={18} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -424,38 +457,126 @@ export default function SeriesPage() {
             </div>
             
             {assistirASeguir.length === 0 && <EmptyRow texto="Nenhum episódio novo por aqui." />}
-            {assistirASeguir.map((l) => (
-              <EpisodioRow
-                key={l.episodeId}
-                posterPath={l.imagem}
-                tituloNome={l.tituloNome}
-                temporada={l.temporada}
-                episodio={l.episodio}
-                episodioNome={l.episodioNome}
-                marcado={false}
-                saindo={saindoIds.has(l.episodeId)}
-                onMarcar={() => marcarAssistido(l.episodeId, false)}
-                onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-              />
-            ))}
+            <div className="flex flex-col gap-2.5 px-4 pb-4">
+              {assistirASeguir.map((l) => (
+                <div
+                  key={l.episodeId}
+                  className={`bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between transition-all duration-300 ${
+                    saindoIds.has(l.episodeId) ? 'scale-95 opacity-0' : ''
+                  }`}
+                >
+                  {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                  <div
+                    onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                    className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
+                    style={
+                      l.imagem
+                        ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${l.imagem})` }
+                        : undefined
+                    }
+                  />
+
+                  {/* Centro: Informações do Episódio */}
+                  <div className="flex-1 flex flex-col justify-center min-w-0">
+                    <div className="flex">
+                      {/* Nome da Série (Clica para ir para a série) */}
+                      <button
+                        onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                        className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider bg-white/5 border border-white/5 px-2 py-0.5 rounded-full"
+                      >
+                        {l.tituloNome} <ChevronRight size={10} strokeWidth={3} />
+                      </button>
+                    </div>
+                    
+                    {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                    <button
+                      onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                      className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                    >
+                      S{String(l.temporada).padStart(2, '0')} | E{String(l.episodio).padStart(2, '0')}
+                    </button>
+
+                    {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                    <button
+                      onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                      className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                    >
+                      {l.episodioNome || 'TBA'}
+                    </button>
+                  </div>
+
+                  {/* Lado Direito: Círculo de Visto Desmarcado */}
+                  <button
+                    onClick={() => marcarAssistido(l.episodeId, false)}
+                    className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center border border-white/15 text-muted hover:border-white/30"
+                  >
+                    <Check size={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
 
             {semAssistirHaTempo.length > 0 && (
               <>
                 <SectionLabel>Sem assistir há algum tempo</SectionLabel>
-                {semAssistirHaTempo.map((l) => (
-                  <EpisodioRow
-                    key={l.episodeId}
-                    posterPath={l.imagem}
-                    tituloNome={l.tituloNome}
-                    temporada={l.temporada}
-                    episodio={l.episodio}
-                    episodioNome={l.episodioNome}
-                    marcado={false}
-                    saindo={saindoIds.has(l.episodeId)}
-                    onMarcar={() => marcarAssistido(l.episodeId, false)}
-                    onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-                  />
-                ))}
+                <div className="flex flex-col gap-2.5 px-4 pb-4">
+                  {semAssistirHaTempo.map((l) => (
+                    <div
+                      key={l.episodeId}
+                      className={`bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between transition-all duration-300 ${
+                        saindoIds.has(l.episodeId) ? 'scale-95 opacity-0' : ''
+                      }`}
+                    >
+                      {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                      <div
+                        onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
+                        style={
+                          l.imagem
+                            ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${l.imagem})` }
+                            : undefined
+                        }
+                      />
+
+                      {/* Centro: Informações do Episódio */}
+                      <div className="flex-1 flex flex-col justify-center min-w-0">
+                        <div className="flex">
+                          {/* Nome da Série (Clica para ir para a série) */}
+                          <button
+                            onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                            className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider bg-white/5 border border-white/5 px-2 py-0.5 rounded-full"
+                          >
+                            {l.tituloNome} <ChevronRight size={10} strokeWidth={3} />
+                          </button>
+                        </div>
+                        
+                        {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        <button
+                          onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                          className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                        >
+                          S{String(l.temporada).padStart(2, '0')} | E{String(l.episodio).padStart(2, '0')}
+                        </button>
+
+                        {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        <button
+                          onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                        >
+                          {l.episodioNome || 'TBA'}
+                        </button>
+                      </div>
+
+                      {/* Lado Direito: Círculo de Visto Desmarcado */}
+                      <button
+                        onClick={() => marcarAssistido(l.episodeId, false)}
+                        className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center border border-white/15 text-muted hover:border-white/30"
+                      >
+                        <Check size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </>
             )}
           </>
@@ -481,7 +602,7 @@ export default function SeriesPage() {
                       key={e.id}
                       className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between"
                     >
-                      {/* Lado Esquerdo: Poster */}
+                      {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
                       <div
                         onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
                         className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
@@ -494,20 +615,31 @@ export default function SeriesPage() {
 
                       {/* Centro: Metadados do Episódio com fontes display fortes */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
+                        {/* Nome da Série (Clica para ir para a série) */}
+                        <div className="flex">
+                          <button
+                            onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
+                            className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider bg-white/5 border border-white/5 px-2 py-0.5 rounded-full"
+                          >
+                            {e.titulo?.nome} <ChevronRight size={10} strokeWidth={3} />
+                          </button>
+                        </div>
+                        
+                        {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
                         <button
                           onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
-                          className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider"
+                          className="text-sm font-display font-bold text-ink mt-1.5 text-left"
                         >
-                          {e.titulo?.nome} <ChevronRight size={10} strokeWidth={3} />
-                        </button>
-                        
-                        <div className="text-sm font-display font-bold text-ink mt-0.5">
                           S{String(e.season_number).padStart(2, '0')} | E{String(e.episode_number).padStart(2, '0')}
-                        </div>
+                        </button>
 
-                        <div className="text-xs text-muted font-display font-medium truncate mt-0.5">
+                        {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        <button
+                          onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
+                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                        >
                           {e.episode_name || 'TBA'}
-                        </div>
+                        </button>
                       </div>
 
                       {/* Lado Direito: Dias Restantes, Horário e Canal com fontes display de alta nitidez */}
