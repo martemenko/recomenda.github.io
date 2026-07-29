@@ -89,13 +89,10 @@ export default function SeriesPage() {
   const [historico, setHistorico] = useState([])
   const [emBreve, setEmBreve] = useState([])
 
-  useEffect(() => {
-    if (user) carregar()
-  }, [user])
-
-  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
+// Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+      // Reduzido para 30ms para resposta visual instantânea e imperceptível, dando o tempo mínimo para o navegador processar as alturas
       const t = setTimeout(() => {
         if (scrollContainerRef.current && paraAssistirRef.current) {
           const parentRect = scrollContainerRef.current.getBoundingClientRect()
@@ -106,7 +103,7 @@ export default function SeriesPage() {
           
           scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }, 150) // Pequeno atraso de 150ms para estabilização de renderização dos cards
+      }, 30) 
       return () => clearTimeout(t)
     }
   }, [carregando, aba, historico.length])
