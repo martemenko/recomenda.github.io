@@ -93,23 +93,18 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito com Rolagem Adaptativa para garantir o foco no "Para assistir" independente da lentidão do aparelho
+  // Efeito com Rolagem Adaptativa nativa para garantir o foco no "Para assistir" ocultando o histórico acima da dobra
   useEffect(() => {
-    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+    if (!carregando && aba === 'lista' && paraAssistirRef.current) {
       
       const ajustarScroll = () => {
-        if (scrollContainerRef.current && paraAssistirRef.current) {
-          const parentRect = scrollContainerRef.current.getBoundingClientRect()
-          const childRect = paraAssistirRef.current.getBoundingClientRect()
-          
-          // Calcula o deslocamento exato de pixel necessário com base nas dimensões atuais na tela
-          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
-          
-          scrollContainerRef.current.scrollTop = targetScrollTop
+        if (paraAssistirRef.current) {
+          // Usa o método nativo de renderização de rolagem do navegador para máxima compatibilidade móvel
+          paraAssistirRef.current.scrollIntoView({ block: 'start' })
         }
       }
 
-      // Executa o ajuste de forma imediata e repete confirmações em intervalos para se adaptar ao carregamento de imagens
+      // Executa de forma imediata e repete confirmações periódicas no primeiro meio segundo de carregamento
       ajustarScroll()
       const t1 = setTimeout(ajustarScroll, 50)
       const t2 = setTimeout(ajustarScroll, 150)
@@ -251,9 +246,12 @@ export default function SeriesPage() {
       : { data: [] }
     const mapaTitulos = new Map((titulosHist ?? []).map((t) => [t.id, t]))
 
-    setHistorico(
-      (histBruto ?? []).map((h) => ({ ...h, episode: { ...h.episode, titulo: mapaTitulos.get(h.episode?.titulo_id) } })),
-    )
+    // Invertemos a ordem do histórico mapeado em memória (.reverse()) para que o mais recente fique no fundo, colado com "Para assistir"
+    const historicoOrdenadoCrescente = (histBruto ?? [])
+      .map((h) => ({ ...h, episode: { ...h.episode, titulo: mapaTitulos.get(h.episode?.titulo_id) } }))
+      .reverse()
+
+    setHistorico(historicoOrdenadoCrescente)
   }
 
   // Marca/desmarca um episódio com atualização LOCAL (sem recarregar a tela toda):
