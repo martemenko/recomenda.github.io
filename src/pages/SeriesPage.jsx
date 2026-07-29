@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -75,6 +75,10 @@ export default function SeriesPage() {
   const [carregando, setCarregando] = useState(true)
   const [saindoIds, setSaindoIds] = useState(new Set())
 
+  // Referências para controlar a posição inicial do scroll
+  const scrollContainerRef = useRef(null)
+  const paraAssistirRef = useRef(null)
+
   // Dados brutos guardados em memória, pra recalcular localmente sem reconsultar o banco
   const [itensCache, setItensCache] = useState([])
   const [episodiosCache, setEpisodiosCache] = useState([])
@@ -88,6 +92,18 @@ export default function SeriesPage() {
   useEffect(() => {
     if (user) carregar()
   }, [user])
+
+  // Efeito para ajustar o scroll padrão escondendo o histórico no topo
+  useEffect(() => {
+    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+      const t = setTimeout(() => {
+        if (scrollContainerRef.current && paraAssistirRef.current) {
+          scrollContainerRef.current.scrollTop = paraAssistirRef.current.offsetTop
+        }
+      }, 100)
+      return () => clearTimeout(t)
+    }
+  }, [carregando, aba, historico.length])
 
   async function carregar() {
     setCarregando(true)
@@ -119,7 +135,6 @@ export default function SeriesPage() {
       return
     }
 
-    // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
     const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
     const hoje = new Date()
 
@@ -203,7 +218,7 @@ export default function SeriesPage() {
       .select('watched_at, episode(id, season_number, episode_number, episode_name, titulo_id)')
       .eq('user_id', user.id)
       .order('watched_at', { ascending: false })
-      .limit(30)
+      .limit(15) // Ajustado de 30 para os 10 últimos vistos
     if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
 
     const idsHist = [...new Set((histBruto ?? []).map((h) => h.episode?.titulo_id).filter(Boolean))]
@@ -266,13 +281,42 @@ export default function SeriesPage() {
         onChange={setAba}
       />
 
-      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu */}
-      <div className="flex-1 overflow-y-auto scroll-area pb-24">
+      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu. Ref adicionada para controle programático */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24">
         {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
 
         {!carregando && aba === 'lista' && (
           <>
-            <SectionLabel>Assistir a seguir</SectionLabel>
+            {/* O histórico de exibição foi movido para o topo do fluxo de rolagem */}
+            {historico.length > 0 && (
+              <>
+                <SectionLabel>Histórico de exibição</SectionLabel>
+                {/* opacity-40 e hover:opacity-75 para deixar o histórico visualmente mais escuro que a lista ativa */}
+                <div className="flex flex-col gap-0.5">
+                  {historico.map((h, i) => (
+                    <div key={`${h.episode.id}-${i}`} className="opacity-40 hover:opacity-75 transition-opacity duration-200">
+                      <EpisodioRow
+                        posterPath={h.episode.titulo?.imagem}
+                        tituloNome={h.episode.titulo?.nome}
+                        temporada={h.episode.season_number}
+                        episodio={h.episode.episode_number}
+                        episodioNome={h.episode.episode_name}
+                        marcado={true}
+                        saindo={saindoIds.has(h.episode.id)}
+                        onMarcar={() => marcarAssistido(h.episode.id, true)}
+                        onAbrirTitulo={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Este elemento recebe a referência que dita a posição padrão de abertura da página */}
+            <div ref={paraAssistirRef}>
+              <SectionLabel>Para assistir</SectionLabel>
+            </div>
+            
             {assistirASeguir.length === 0 && <EmptyRow texto="Nenhum episódio novo por aqui." />}
             {assistirASeguir.map((l) => (
               <EpisodioRow
@@ -285,7 +329,7 @@ export default function SeriesPage() {
                 marcado={false}
                 saindo={saindoIds.has(l.episodeId)}
                 onMarcar={() => marcarAssistido(l.episodeId, false)}
-                onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}`)}
+                onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
               />
             ))}
 
@@ -303,29 +347,11 @@ export default function SeriesPage() {
                     marcado={false}
                     saindo={saindoIds.has(l.episodeId)}
                     onMarcar={() => marcarAssistido(l.episodeId, false)}
-                    onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}`)}
+                    onAbrirTitulo={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
                   />
                 ))}
               </>
             )}
-
-            {/* Só aparece rolando a tela pra baixo, por estar mais abaixo na página */}
-            <SectionLabel>Histórico assistido</SectionLabel>
-            {historico.length === 0 && <EmptyRow texto="Nada assistido ainda." />}
-            {historico.map((h, i) => (
-              <EpisodioRow
-                key={`${h.episode.id}-${i}`}
-                posterPath={h.episode.titulo?.imagem}
-                tituloNome={h.episode.titulo?.nome}
-                temporada={h.episode.season_number}
-                episodio={h.episode.episode_number}
-                episodioNome={h.episode.episode_name}
-                marcado={true}
-                saindo={saindoIds.has(h.episode.id)}
-                onMarcar={() => marcarAssistido(h.episode.id, true)}
-                onAbrirTitulo={() => navigate(`/titulo/${h.episode.titulo_id}`)}
-              />
-            ))}
           </>
         )}
 
