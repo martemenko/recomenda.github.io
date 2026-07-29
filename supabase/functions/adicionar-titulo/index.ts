@@ -1,4 +1,5 @@
-// veio do git
+// Edge Function: adicionar-titulo
+// Chamada quando o usuário clica em "Adicionar/Seguir" ou para ingerir metadados base de forma paralela.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -54,7 +55,10 @@ serve(async (req) => {
       .eq("id", tmdb_id)
       .maybeSingle();
 
-    if (!existente) {
+    // Correção: Se for uma chamada de background síncrona (status === "none"), forçamos a atualização dos episódios [2]
+    const forceUpdate = status === "none";
+
+    if (!existente || forceUpdate) {
       // Carrega os detalhes do título e os créditos/elenco em paralelo
       const [detalhes, credits] = await Promise.all([
         tmdbGet(`/${media_type}/${tmdb_id}?language=pt-BR`),
