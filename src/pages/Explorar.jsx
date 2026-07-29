@@ -41,8 +41,19 @@ export default function Explorar() {
 
   return (
     <>
+      {/* Corrige o alinhamento do menu inferior de navegação na borda física da tela */}
+      <style>{`
+        nav, footer, [class*="bottom-"] {
+          bottom: 0 !important;
+          margin-bottom: 0 !important;
+          padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+        }
+      `}</style>
+
       <TopBar title="Explorar" />
-      <div className="flex-1 overflow-y-auto scroll-area">
+      
+      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu de navegação */}
+      <div className="flex-1 overflow-y-auto scroll-area pb-24">
         <form onSubmit={buscar} className="px-4 py-3">
           <div className="flex items-center gap-2 bg-surface border border-white/10 rounded-2xl px-4 py-3">
             <Search size={16} className="text-muted" />
