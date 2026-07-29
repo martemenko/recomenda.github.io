@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react' // Corrigido: adicionado useRef aqui
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -113,66 +113,69 @@ export default function SeriesPage() {
 
   async function carregar() {
     setCarregando(true)
+    try {
+      const { data: itensBrutos, error: erroItens } = await supabase
+        .from('user_item')
+        .select('titulo_id, status, added_at, titulo(nome, imagem)')
+        .eq('user_id', user.id)
+        .in('status', ['vendo', 'visto'])
+      if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
 
-    const { data: itensBrutos, error: erroItens } = await supabase
-      .from('user_item')
-      .select('titulo_id, status, added_at, titulo(nome, imagem)')
-      .eq('user_id', user.id)
-      .in('status', ['vendo', 'visto'])
-    if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
+      const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
+      const { data: seriesEncontradas, error: erroSeries } = await supabase
+        .from('series')
+        .select('titulo_id')
+        .in('titulo_id', idsCandidatos.length ? idsCandidatos : [0])
+      if (erroSeries) console.error('Erro ao buscar series:', erroSeries)
 
-    const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
-    const { data: seriesEncontradas, error: erroSeries } = await supabase
-      .from('series')
-      .select('titulo_id')
-      .in('titulo_id', idsCandidatos.length ? idsCandidatos : [0])
-    if (erroSeries) console.error('Erro ao buscar series:', erroSeries)
+      const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
+      const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
+      setItensCache(itens)
 
-    const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
-    const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
-    setItensCache(itens)
+      const tituloIds = itens.map((i) => i.titulo_id)
+      if (tituloIds.length === 0) {
+        setEpisodiosCache([]); setAssistidosMapa(new Map())
+        setAssistirASeguir([]); setSemAssistirHaTempo([]); setEmBreve([])
+        await carregarHistorico()
+        return
+      }
 
-    const tituloIds = itens.map((i) => i.titulo_id)
-    if (tituloIds.length === 0) {
-      setEpisodiosCache([]); setAssistidosMapa(new Map())
-      setAssistirASeguir([]); setSemAssistirHaTempo([]); setEmBreve([])
-      await carregarHistorico()
+      // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
+      const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
+      const hoje = new Date()
+
+      // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
+      const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
+        obterEpisodios(activeTituloIds),
+        obterAssistidos(user.id),
+        supabase
+          .from('episode')
+          .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
+          .gt('launch_date', hoje.toISOString().slice(0, 10))
+          .order('launch_date', { ascending: true })
+          .then(res => {
+            if (res.error) console.error('Erro ao buscar em breve:', res.error)
+            return res.data ?? []
+          }),
+        carregarHistorico() // Processa a carga de histórico também em paralelo
+      ])
+
+      setEpisodiosCache(episodiosCompletos)
+
+      const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
+      setAssistidosMapa(novoAssistidosMapa)
+
+      recalcularBuckets(itens, episodiosCompletos, novoAssistidosMapa)
+
+      const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
+      setEmBreve((futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) })))
+
+    } catch (err) {
+      console.error('Erro geral ao carregar as séries:', err)
+    } finally {
       setCarregando(false)
-      return
     }
-
-    // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
-    const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
-    const hoje = new Date()
-
-    // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
-    const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
-      obterEpisodios(activeTituloIds),
-      obterAssistidos(user.id),
-      supabase
-        .from('episode')
-        .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-        .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
-        .gt('launch_date', hoje.toISOString().slice(0, 10))
-        .order('launch_date', { ascending: true })
-        .then(res => {
-          if (res.error) console.error('Erro ao buscar em breve:', res.error)
-          return res.data ?? []
-        }),
-      carregarHistorico() // Processa a carga de histórico também em paralelo
-    ])
-
-    setEpisodiosCache(episodiosCompletos)
-
-    const novoAssistidosMapa = new Map((assistidos ?? []).map((a) => [a.episode_id, a.watched_at]))
-    setAssistidosMapa(novoAssistidosMapa)
-
-    recalcularBuckets(itens, episodiosCompletos, novoAssistidosMapa)
-
-    const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
-    setEmBreve((futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) })))
-
-    setCarregando(false)
   }
 
   // Recalcula "assistir a seguir" / "sem assistir há tempo" a partir dos dados já em
@@ -198,7 +201,7 @@ export default function SeriesPage() {
         .find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
       if (!proximo) continue
 
-      const linha = {
+      const inlineLine = {
         tituloId: item.titulo_id,
         tituloNome: item.titulo.nome,
         imagem: item.titulo.imagem,
@@ -211,12 +214,12 @@ export default function SeriesPage() {
       const datasAssistidas = eps.map((e) => assistidosAtual.get(e.id)).filter(Boolean).map((d) => new Date(d))
       const ultimaAtividade = datasAssistidas.length ? new Date(Math.max(...datasAssistidas)) : new Date(item.added_at)
 
-      if (hoje - ultimaAtividade > TRINTA_DIAS_MS) semTempo.push(linha)
-      else seguir.push(linha)
+      if (hoje - ultimaAtividade > TRINTA_DIAS_MS) semTempo.push(inlineLine)
+      else seguir.push(inlineLine)
     }
 
     setAssistirASeguir(seguir)
-    setSemTempo = setSemAssistirHaTempo(semTempo) // mantido sem alteração de fluxo
+    setSemAssistirHaTempo(semTempo) // Corrigido de setSemTempo = ...
   }
 
   async function carregarHistorico() {
@@ -288,7 +291,7 @@ export default function SeriesPage() {
         onChange={setAba}
       />
 
-      {/* pb-24, relative e Ref adicionada para garantir o scroll correto e o respiro do menu */}
+      {/* pb-24, relative e Ref adicionadas para garantir o scroll correto e o respiro do menu */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24 relative">
         {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
 
