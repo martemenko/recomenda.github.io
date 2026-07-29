@@ -381,4 +381,204 @@ export default function TituloDetalhe() {
           <span>{titulo.genero}</span>
           {titulo.media_rating && (
             <span className="flex items-center gap-1 text-teal">
-              <Star size={12} fill="currentColor
+              <Star size={12} fill="currentColor" /> {titulo.media_rating} ({titulo.total_avaliacoes})
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-ink mt-3 leading-relaxed">{titulo.sinopse}</p>
+
+        <div className="flex items-center gap-2 mt-4">
+          {!userItem ? (
+            <button onClick={() => adicionar('quero_ver')} className="flex-1 bg-amber text-bg rounded-2xl py-3 font-display font-semibold text-sm shadow-[0_0_18px_rgba(243,194,85,0.35)]">
+              + Seguir
+            </button>
+          ) : mediaType === 'tv' ? (
+            <button
+              onClick={() => setMenuStatusAberto(true)}
+              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
+            >
+              {userItem.status === 'interrompida' ? 'Interrompida' : '✓ Seguindo'}
+            </button>
+          ) : (
+            <button
+              onClick={deixarDeSeguir}
+              className="flex-1 bg-surface border border-white/10 rounded-2xl py-3 text-center text-sm text-ink font-display font-medium"
+            >
+              ✓ Seguindo
+            </button>
+          )}
+
+          {mediaType === 'movie' && (
+            <button
+              onClick={marcarFilmeVisto}
+              aria-label="Marcar como visto"
+              className={`flex-shrink-0 w-12 h-12 rounded-2xl border flex items-center justify-center ${
+                userItem?.status === 'visto' ? 'bg-teal border-teal text-bg shadow-[0_0_14px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
+              }`}
+            >
+              <Check size={20} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 justify-center mt-4">
+          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+            <button key={n} onClick={() => avaliar(n)}>
+              <Star size={16} fill={n <= minhaNota ? '#f3c255' : 'none'} className={n <= minhaNota ? 'text-amber' : 'text-muted'} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <SectionLabel>Elenco</SectionLabel>
+      <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
+        {elenco.map((c, i) => (
+          <div key={i} className="flex-shrink-0 w-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden">
+              {c.ator?.image && <img src={`https://image.tmdb.org/t/p/w200${c.ator.image}`} className="w-full h-full object-cover" />}
+            </div>
+            <div className="text-[10px] text-ink mt-1 truncate">{c.ator?.name}</div>
+            <div className="text-[9px] text-muted truncate">{c.personagem}</div>
+          </div>
+        ))}
+      </div>
+
+      {mediaType === 'tv' && (
+        <>
+          <SectionLabel>Episódios</SectionLabel>
+          <div className="px-4 pb-8 flex flex-col gap-2">
+            {temporadas.map((t) => {
+              const epsDaTemporada = episodios.filter((e) => e.season_number === t)
+              // Filtra os episódios lançados para a exibição de progresso correto
+              const lancadosDaTemporada = epsDaTemporada.filter((e) => e.launch_date && e.launch_date <= hojeString)
+              const assistidosCount = epsDaTemporada.filter((e) => assistidos.has(e.id)).length
+              const todasAssistidas = lancadosDaTemporada.length > 0 && assistidosCount === lancadosDaTemporada.length
+              return (
+                <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
+                      className="flex-1 flex justify-between px-3 py-2 text-sm text-ink font-mono"
+                    >
+                      Temporada {t}
+                      <span className="text-muted">{assistidosCount}/{epsDaTemporada.length}</span>
+                    </button>
+                    <button
+                      onClick={() => marcarTemporada(t, todasAssistidas)}
+                      aria-label="Marcar temporada como vista"
+                      className={`w-8 h-8 mr-2 flex-shrink-0 rounded-full flex items-center justify-center border ${
+                        todasAssistidas ? 'bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
+                      }`}
+                    >
+                      <Check size={14} />
+                    </button>
+                  </div>
+                  {temporadaAberta === t && (
+                    <div className="flex flex-col">
+                      {epsDaTemporada.map((e) => {
+                        const marcado = assistidos.has(e.id)
+                        const lancado = e.launch_date && e.launch_date <= hojeString // Validação se o episódio já estreou [1]
+
+                        if (lancado) {
+                          return (
+                            <button
+                              key={e.id}
+                              onClick={() => marcarEpisodio(e, marcado)}
+                              className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2 hover:bg-white/5 transition-colors"
+                            >
+                              <span className={marcado ? 'text-muted' : 'text-ink text-left'}>
+                                E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
+                              </span>
+                              <span className={marcado ? 'text-teal' : 'text-muted'}>{marcado ? '✓' : '○'}</span>
+                            </button>
+                          )
+                        } else {
+                          // Se o episódio não foi lançado na data atual, vira uma linha travada (não clicável)
+                          const dataTexto = e.launch_date ? formatarData(e.launch_date) : 'TBA'
+                          return (
+                            <div
+                              key={e.id}
+                              className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2 opacity-50 cursor-not-allowed select-none"
+                            >
+                              <span className="text-muted text-left">
+                                E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
+                              </span>
+                              <span className="text-muted font-mono">{dataTexto}</span>
+                            </div>
+                          )
+                        }
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {confirmacao && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
+          <div className="bg-surface border border-white/10 rounded-2xl p-5 max-w-[340px] w-full">
+            <p className="text-sm text-ink mb-4 leading-relaxed">{confirmacao.mensagem}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmacao.aoRecusar}
+                className="flex-1 border border-white/15 rounded-xl py-2.5 text-sm text-muted font-display font-medium"
+              >
+                Não
+              </button>
+              <button
+                onClick={confirmacao.aoConfirmar}
+                className="flex-1 bg-amber text-bg rounded-xl py-2.5 text-sm font-display font-semibold shadow-[0_0_14px_rgba(243,194,85,0.35)]"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {menuStatusAberto && (
+        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={() => setMenuStatusAberto(false)}>
+          <div
+            className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xs text-muted font-mono uppercase mb-3 px-1">Gerenciar série</div>
+            <div className="flex flex-col gap-2">
+              {userItem?.status === 'interrompida' ? (
+                <button
+                  onClick={() => mudarStatus('quero_ver')}
+                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
+                >
+                  <Check size={16} className="text-teal" /> Voltar a Seguir (Ativa)
+                </button>
+              ) : (
+                <button
+                  onClick={() => mudarStatus('interrompida')}
+                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
+                >
+                  Interrompida
+                </button>
+              )}
+
+              <button
+                onClick={deixarDeSeguir}
+                className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              >
+                Deixar de seguir
+              </button>
+            </div>
+            <button
+              onClick={() => setMenuStatusAberto(false)}
+              className="w-full mt-2 py-2.5 text-sm text-muted font-display font-medium"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
