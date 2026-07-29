@@ -1,12 +1,8 @@
-import { useNavigate } from 'react-router-dom'
-
-export default function ContaConfirmada() {
-  const navigate = useNavigate()
-
+export default function ContaConfirmada({ onIrParaLogin }) {
+  
   function irParaLogin() {
-    // limpa o "?confirmado=1" da URL antes de seguir, pra não ficar preso nessa tela
     window.history.replaceState({}, '', window.location.pathname)
-    navigate('/login')
+    onIrParaLogin()
   }
 
   return (
