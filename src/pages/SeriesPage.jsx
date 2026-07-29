@@ -10,6 +10,14 @@ import { ChevronRight, Check } from 'lucide-react'
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
 
+// Função auxiliar para obter a data atual local formatada como 'YYYY-MM-DD' sem interferência de fuso horário
+function obterDataLocalISO(date = new Date()) {
+  const ano = date.getFullYear()
+  const mes = String(date.getMonth() + 1).padStart(2, '0')
+  const dia = String(date.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
 // Função auxiliar para resolver o canal e horário de lançamento baseado na identidade de cada série
 function obterCanalEHorario(tituloId, tituloNome) {
   const nomeLower = String(tituloNome ?? '').toLowerCase();
@@ -123,18 +131,19 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-// Alinha o scroll na seção "Para assistir" sempre que a aba "lista" for carregada ou ativada
-useEffect(() => {
-  if (!carregando && aba === 'lista' && paraAssistirRef.current) {
-    const t = setTimeout(() => {
-      paraAssistirRef.current?.scrollIntoView({
-        behavior: 'auto', // Altere para 'smooth' se preferir uma transição visual suave
-        block: 'start'
-      })
-    }, 60)
-    return () => clearTimeout(t)
-  }
-}, [carregando, aba])
+  // Alinha o scroll perfeitamente na seção "Para assistir" sempre que a aba lista é exibida
+  useEffect(() => {
+    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+      const t = setTimeout(() => {
+        const container = scrollContainerRef.current
+        const target = paraAssistirRef.current
+        if (container && target) {
+          container.scrollTop = target.offsetTop
+        }
+      }, 60)
+      return () => clearTimeout(t)
+    }
+  }, [carregando, aba])
 
   async function carregar() {
     setCarregando(true)
@@ -167,13 +176,7 @@ useEffect(() => {
 
       // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
       const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
-      
-      // Correção de fuso horário local e data real do celular do usuário
-      const hojeLocal = new Date()
-      const ano = hojeLocal.getFullYear()
-      const mes = String(hojeLocal.getMonth() + 1).padStart(2, '0')
-      const dia = String(hojeLocal.getDate()).padStart(2, '0')
-      const hojeString = `${ano}-${mes}-${dia}` // Formato YYYY-MM-DD local absoluto [1]
+      const hojeLocalStr = obterDataLocalISO()
 
       // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
       const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
@@ -182,8 +185,8 @@ useEffect(() => {
         supabase
           .from('episode')
           .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-          .in('titulo_id', tituloIds)
-          .gte('launch_date', hojeString) // Correção: Alterado de .gt para .gte e usando o fuso horário local [2]
+          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
+          .gt('launch_date', hojeLocalStr)
           .order('launch_date', { ascending: true })
           .then(res => {
             if (res.error) console.error('Erro ao buscar em breve:', res.error)
@@ -214,6 +217,7 @@ useEffect(() => {
   // marcar um episódio (atualização local, sem recarregar a tela toda).
   function recalcularBuckets(itens, episodios, assistidosAtual) {
     const hoje = new Date()
+    const hojeLocalStr = obterDataLocalISO(hoje)
     const seguir = []
     const semTempo = []
 
@@ -229,7 +233,7 @@ useEffect(() => {
       }
       const proximo = eps
         .slice(indiceInicial)
-        .find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || new Date(e.launch_date) <= hoje))
+        .find((e) => !assistidosAtual.has(e.id) && (!e.launch_date || e.launch_date <= hojeLocalStr))
       if (!proximo) continue
 
       const inlineLine = {
@@ -250,7 +254,7 @@ useEffect(() => {
     }
 
     setAssistirASeguir(seguir)
-    setSemTempo(semTempo)
+    setSemAssistirHaTempo(semTempo)
   }
 
   async function carregarHistorico() {
