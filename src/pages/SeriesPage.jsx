@@ -123,18 +123,21 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito matemático para alinhar o scroll em "Para assistir" ocultando o histórico no topo
-  useEffect(() => {
-    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
-      const t = setTimeout(() => {
-        if (scrollContainerRef.current && paraAssistirRef.current) {
-          // Atribuição direta e estável baseada no offsetTop do contêiner relativo
-          scrollContainerRef.current.scrollTop = paraAssistirRef.current.offsetTop
-        }
-      }, 30) // Delay de 30ms para renderização limpa e imperceptível
-      return () => clearTimeout(t)
-    }
-  }, [carregando, aba, historico.length])
+// Alinha o scroll na seção "Para assistir" sempre que a aba "lista" for carregada ou ativada
+useEffect(() => {
+  if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+    const t = setTimeout(() => {
+      const container = scrollContainerRef.current
+      const target = paraAssistirRef.current
+      
+      if (container && target) {
+        // Define a rolagem exatamente na posição do topo da seção "Para assistir"
+        container.scrollTop = target.offsetTop
+      }
+    }, 60) // Delay ligeiramente maior para garantir que o DOM foi totalmente renderizado
+    return () => clearTimeout(t)
+  }
+}, [carregando, aba])
 
   async function carregar() {
     setCarregando(true)
