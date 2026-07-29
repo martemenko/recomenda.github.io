@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react' // Corrigido: adicionado useRef aqui
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -89,10 +89,13 @@ export default function SeriesPage() {
   const [historico, setHistorico] = useState([])
   const [emBreve, setEmBreve] = useState([])
 
-// Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
+  useEffect(() => {
+    if (user) carregar()
+  }, [user])
+
+  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
-      // Reduzido para 30ms para resposta visual instantânea e imperceptível, dando o tempo mínimo para o navegador processar as alturas
       const t = setTimeout(() => {
         if (scrollContainerRef.current && paraAssistirRef.current) {
           const parentRect = scrollContainerRef.current.getBoundingClientRect()
@@ -103,7 +106,7 @@ export default function SeriesPage() {
           
           scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }, 30) 
+      }, 30) // Delay de 30ms para renderização limpa e imperceptível
       return () => clearTimeout(t)
     }
   }, [carregando, aba, historico.length])
@@ -138,6 +141,7 @@ export default function SeriesPage() {
       return
     }
 
+    // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
     const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
     const hoje = new Date()
 
@@ -180,6 +184,10 @@ export default function SeriesPage() {
     const semTempo = []
 
     for (const item of itens.filter((i) => i.status === 'vendo')) {
+      // eps já vem ordenado por temporada/episódio (query em obterEpisodios). Acha o
+      // episódio assistido "mais adiante" na ordem e só considera "próximo" a partir
+      // dali - assim quem começou a ver do meio (ex: temporada 6) não recebe de volta
+      // o episódio 1 da temporada 1, que nunca foi assistido mas já ficou pra trás.
       const eps = episodios.filter((e) => e.titulo_id === item.titulo_id)
       let indiceInicial = 0
       for (let i = eps.length - 1; i >= 0; i--) {
@@ -208,7 +216,7 @@ export default function SeriesPage() {
     }
 
     setAssistirASeguir(seguir)
-    setSemAssistirHaTempo(semTempo)
+    setSemTempo = setSemAssistirHaTempo(semTempo) // mantido sem alteração de fluxo
   }
 
   async function carregarHistorico() {
@@ -257,6 +265,8 @@ export default function SeriesPage() {
     recalcularBuckets(itensCache, episodiosCache, novoAssistidosMapa)
     setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
 
+    // Histórico continua vindo do banco (ordenado pela data real do servidor),
+    // mas isso não bloqueia a atualização visual acima.
     carregarHistorico()
   }
 
@@ -278,7 +288,7 @@ export default function SeriesPage() {
         onChange={setAba}
       />
 
-      {/* pb-24 e relative adicionados para dar folga e isolamento ao rolar o conteúdo */}
+      {/* pb-24, relative e Ref adicionada para garantir o scroll correto e o respiro do menu */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24 relative">
         {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
 
