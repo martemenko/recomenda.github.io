@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
-import { ChevronRight, Check } from 'lucide-react' // Adicionado Check do Lucide-React
+import { ChevronRight, Check } from 'lucide-react'
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
@@ -123,18 +123,13 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
+  // Efeito matemático para alinhar o scroll em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
       const t = setTimeout(() => {
         if (scrollContainerRef.current && paraAssistirRef.current) {
-          const parentRect = scrollContainerRef.current.getBoundingClientRect()
-          const childRect = paraAssistirRef.current.getBoundingClientRect()
-          
-          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
-          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
-          
-          scrollContainerRef.current.scrollTop = targetScrollTop
+          // Atribuição direta e estável baseada no offsetTop do contêiner relativo
+          scrollContainerRef.current.scrollTop = paraAssistirRef.current.offsetTop
         }
       }, 30) // Delay de 30ms para renderização limpa e imperceptível
       return () => clearTimeout(t)
@@ -172,7 +167,13 @@ export default function SeriesPage() {
 
       // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
       const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
-      const hoje = new Date()
+      
+      // Correção de fuso horário local e data real do celular do usuário
+      const hojeLocal = new Date()
+      const ano = hojeLocal.getFullYear()
+      const mes = String(hojeLocal.getMonth() + 1).padStart(2, '0')
+      const dia = String(hojeLocal.getDate()).padStart(2, '0')
+      const hojeString = `${ano}-${mes}-${dia}` // Formato YYYY-MM-DD local absoluto [1]
 
       // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
       const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
@@ -181,8 +182,8 @@ export default function SeriesPage() {
         supabase
           .from('episode')
           .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
-          .gt('launch_date', hoje.toISOString().slice(0, 10))
+          .in('titulo_id', tituloIds)
+          .gte('launch_date', hojeString) // Correção: Alterado de .gt para .gte e usando o fuso horário local [2]
           .order('launch_date', { ascending: true })
           .then(res => {
             if (res.error) console.error('Erro ao buscar em breve:', res.error)
@@ -249,7 +250,7 @@ export default function SeriesPage() {
     }
 
     setAssistirASeguir(seguir)
-    setSemAssistirHaTempo(semTempo)
+    setSemTempo(semTempo)
   }
 
   async function carregarHistorico() {
