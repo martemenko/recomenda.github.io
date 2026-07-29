@@ -93,21 +93,35 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
+  // Efeito com Rolagem Adaptativa para garantir o foco no "Para assistir" independente da lentidão do aparelho
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
-      const t = setTimeout(() => {
+      
+      const ajustarScroll = () => {
         if (scrollContainerRef.current && paraAssistirRef.current) {
           const parentRect = scrollContainerRef.current.getBoundingClientRect()
           const childRect = paraAssistirRef.current.getBoundingClientRect()
           
-          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
+          // Calcula o deslocamento exato de pixel necessário com base nas dimensões atuais na tela
           const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
           
           scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }, 30) // Delay de 30ms para renderização limpa e imperceptível
-      return () => clearTimeout(t)
+      }
+
+      // Executa o ajuste de forma imediata e repete confirmações em intervalos para se adaptar ao carregamento de imagens
+      ajustarScroll()
+      const t1 = setTimeout(ajustarScroll, 50)
+      const t2 = setTimeout(ajustarScroll, 150)
+      const t3 = setTimeout(ajustarScroll, 300)
+      const t4 = setTimeout(ajustarScroll, 500)
+
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+        clearTimeout(t4)
+      }
     }
   }, [carregando, aba, historico.length])
 
@@ -219,7 +233,7 @@ export default function SeriesPage() {
     }
 
     setAssistirASeguir(seguir)
-    setSemAssistirHaTempo(semTempo) // Corrigido de setSemTempo = ...
+    setSemAssistirHaTempo(semTempo)
   }
 
   async function carregarHistorico() {
