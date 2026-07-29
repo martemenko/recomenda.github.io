@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/auth'
 import MobileShell from './components/MobileShell'
 import BottomTabBar from './components/BottomTabBar'
 import Login from './pages/Login'
+import ContaConfirmada from './pages/ContaConfirmada'
 import SeriesPage from './pages/SeriesPage'
 import FilmesPage from './pages/FilmesPage'
 import Explorar from './pages/Explorar'
@@ -14,6 +15,15 @@ import ListaDetalhe from './pages/ListaDetalhe'
 function RotasPrivadas() {
   const { session } = useAuth()
 
+  const confirmado = new URLSearchParams(window.location.search).get('confirmado') === '1'
+  if (confirmado) {
+    return (
+      <MobileShell>
+        <ContaConfirmada />
+      </MobileShell>
+    )
+  }
+
   if (session === undefined) {
     return (
       <MobileShell>
@@ -21,7 +31,6 @@ function RotasPrivadas() {
       </MobileShell>
     )
   }
-
   if (!session) {
     return (
       <MobileShell>
@@ -29,7 +38,6 @@ function RotasPrivadas() {
       </MobileShell>
     )
   }
-
   return (
     <MobileShell>
       <Routes>
@@ -46,7 +54,6 @@ function RotasPrivadas() {
     </MobileShell>
   )
 }
-
 // A barra inferior não aparece em telas de detalhe/configurações, só nas 4 abas principais
 function RodapeCondicional() {
   const { pathname } = useLocation()
@@ -54,7 +61,6 @@ function RodapeCondicional() {
   if (!abasPrincipais.some((a) => pathname.startsWith(a))) return null
   return <BottomTabBar />
 }
-
 export default function App() {
   return (
     <HashRouter>
