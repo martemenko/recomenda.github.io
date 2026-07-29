@@ -125,16 +125,13 @@ export default function SeriesPage() {
 
 // Alinha o scroll na seção "Para assistir" sempre que a aba "lista" for carregada ou ativada
 useEffect(() => {
-  if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+  if (!carregando && aba === 'lista' && paraAssistirRef.current) {
     const t = setTimeout(() => {
-      const container = scrollContainerRef.current
-      const target = paraAssistirRef.current
-      
-      if (container && target) {
-        // Define a rolagem exatamente na posição do topo da seção "Para assistir"
-        container.scrollTop = target.offsetTop
-      }
-    }, 60) // Delay ligeiramente maior para garantir que o DOM foi totalmente renderizado
+      paraAssistirRef.current?.scrollIntoView({
+        behavior: 'auto', // Altere para 'smooth' se preferir uma transição visual suave
+        block: 'start'
+      })
+    }, 60)
     return () => clearTimeout(t)
   }
 }, [carregando, aba])
