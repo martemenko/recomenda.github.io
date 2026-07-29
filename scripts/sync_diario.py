@@ -40,8 +40,19 @@ def ids_alterados(tipo):
 
 
 def ids_no_banco(tabela):
-    resp = supabase.table(tabela).select("titulo_id").execute()
-    return {row["titulo_id"] for row in resp.data}
+    """Retorna todos os ids da tabela usando paginação para contornar o limite de 1000 linhas."""
+    ids = set()
+    start, page_size = 0, 1000
+    while True:
+        resp = supabase.table(tabela).select("titulo_id").range(start, start + page_size - 1).execute()
+        data = resp.data
+        if not data:
+            break
+        ids.update(row["titulo_id"] for row in data)
+        if len(data) < page_size:
+            break
+        start += page_size
+    return ids
 
 
 def atualizar_serie(tmdb_id):
