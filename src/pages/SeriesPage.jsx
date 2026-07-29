@@ -124,29 +124,21 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito com Rolagem Adaptativa nativa para garantir o foco no "Para assistir" ocultando o histórico no topo
+  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
-    if (!carregando && aba === 'lista' && paraAssistirRef.current) {
-      
-      const ajustarScroll = () => {
-        if (paraAssistirRef.current) {
-          paraAssistirRef.current.scrollIntoView({ block: 'start' })
+    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+      const t = setTimeout(() => {
+        if (scrollContainerRef.current && paraAssistirRef.current) {
+          const parentRect = scrollContainerRef.current.getBoundingClientRect()
+          const childRect = paraAssistirRef.current.getBoundingClientRect()
+          
+          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
+          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
+          
+          scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }
-
-      // Executa de forma imediata e repete confirmações periódicas no primeiro meio segundo de carregamento
-      ajustarScroll()
-      const t1 = setTimeout(ajustarScroll, 50)
-      const t2 = setTimeout(ajustarScroll, 150)
-      const t3 = setTimeout(ajustarScroll, 300)
-      const t4 = setTimeout(ajustarScroll, 500)
-
-      return () => {
-        clearTimeout(t1)
-        clearTimeout(t2)
-        clearTimeout(t3)
-        clearTimeout(t4)
-      }
+      }, 30) // Delay de 30ms para renderização limpa e imperceptível
+      return () => clearTimeout(t)
     }
   }, [carregando, aba, historico.length])
 
@@ -157,7 +149,7 @@ export default function SeriesPage() {
         .from('user_item')
         .select('titulo_id, status, added_at, titulo(nome, imagem)')
         .eq('user_id', user.id)
-        .in('status', ['vendo', 'visto', 'quero_ver']) // Correção: adicionado 'quero_ver' para listar também as séries seguidas novas
+        .in('status', ['vendo', 'visto', 'quero_ver']) // Mantido para listar séries novas
       if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
 
       const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
@@ -181,7 +173,13 @@ export default function SeriesPage() {
 
       // Otimização: Filtra para buscar episódios apenas das séries que estão ativas ('vendo')
       const activeTituloIds = itens.filter(i => i.status === 'vendo').map(i => i.titulo_id)
-      const hoje = new Date()
+      
+      // Correção de Fuso Horário Local: Obtém a data real de hoje baseada no relógio do usuário
+      const hojeLocal = new Date()
+      const ano = hojeLocal.getFullYear()
+      const mes = String(hojeLocal.getMonth() + 1).padStart(2, '0')
+      const dia = String(hojeLocal.getDate()).padStart(2, '0')
+      const hojeString = `${ano}-${mes}-${dia}` // Formato YYYY-MM-DD local absoluto [1]
 
       // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
       const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
@@ -190,8 +188,8 @@ export default function SeriesPage() {
         supabase
           .from('episode')
           .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
-          .gt('launch_date', hoje.toISOString().slice(0, 10))
+          .in('titulo_id', tituloIds)
+          .gte('launch_date', hojeString) // Correção: Alterado de .gt para .gte e usando o fuso horário local [2]
           .order('launch_date', { ascending: true })
           .then(res => {
             if (res.error) console.error('Erro ao buscar em breve:', res.error)
@@ -316,8 +314,8 @@ export default function SeriesPage() {
   }
 
   // --- LÓGICA DE PROCESSO E AGRUPAMENTO DOS LANÇAMENTOS (EM BREVE) ---
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
+  const hojeCalculo = new Date()
+  hojeCalculo.setHours(0, 0, 0, 0)
 
   const DIAS_SEMANA = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO']
   const gruposMapa = new Map()
@@ -329,8 +327,10 @@ export default function SeriesPage() {
     const dataLanc = new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10))
     dataLanc.setHours(0, 0, 0, 0)
 
-    const diffTempo = dataLanc.getTime() - hoje.getTime()
-    const diffDias = Math.ceil(diffTempo / (1000 * 60 * 60 * 24))
+    const diffTempo = dataLanc.getTime() - hojeCalculo.getTime()
+    
+    // Correção: Alterado de Math.ceil para Math.round para evitar desvios causados por minutos de fuso horário
+    const diffDias = Math.round(diffTempo / (1000 * 60 * 60 * 24))
 
     if (diffDias < 0) continue // Ignora episódios que já foram lançados
 
