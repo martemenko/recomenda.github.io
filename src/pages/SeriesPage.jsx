@@ -6,7 +6,7 @@ import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
 import EpisodioRow from '../components/EpisodioRow'
-import { ChevronRight } from 'lucide-react' // Adicionado para o link das séries no "Em breve"
+import { ChevronRight } from 'lucide-react'
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
@@ -124,21 +124,29 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
+  // Efeito com Rolagem Adaptativa nativa para garantir o foco no "Para assistir" ocultando o histórico no topo
   useEffect(() => {
-    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
-      const t = setTimeout(() => {
-        if (scrollContainerRef.current && paraAssistirRef.current) {
-          const parentRect = scrollContainerRef.current.getBoundingClientRect()
-          const childRect = paraAssistirRef.current.getBoundingClientRect()
-          
-          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
-          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
-          
-          scrollContainerRef.current.scrollTop = targetScrollTop
+    if (!carregando && aba === 'lista' && paraAssistirRef.current) {
+      
+      const ajustarScroll = () => {
+        if (paraAssistirRef.current) {
+          paraAssistirRef.current.scrollIntoView({ block: 'start' })
         }
-      }, 30) // Delay de 30ms para renderização limpa e imperceptível
-      return () => clearTimeout(t)
+      }
+
+      // Executa de forma imediata e repete confirmações periódicas no primeiro meio segundo de carregamento
+      ajustarScroll()
+      const t1 = setTimeout(ajustarScroll, 50)
+      const t2 = setTimeout(ajustarScroll, 150)
+      const t3 = setTimeout(ajustarScroll, 300)
+      const t4 = setTimeout(ajustarScroll, 500)
+
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+        clearTimeout(t4)
+      }
     }
   }, [carregando, aba, historico.length])
 
@@ -149,7 +157,7 @@ export default function SeriesPage() {
         .from('user_item')
         .select('titulo_id, status, added_at, titulo(nome, imagem)')
         .eq('user_id', user.id)
-        .in('status', ['vendo', 'visto'])
+        .in('status', ['vendo', 'visto', 'quero_ver']) // Correção: adicionado 'quero_ver' para listar também as séries seguidas novas
       if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
 
       const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
@@ -453,15 +461,15 @@ export default function SeriesPage() {
           </>
         )}
 
-        {/* Interface "Em breve" redesenhada com base nas suas diretrizes e capturas de tela */}
+        {/* Interface "Em breve" redesenhada com fontes robustas da marca (font-display) */}
         {!carregando && aba === 'em_breve' && (
           <div className="px-4 pb-12 flex flex-col gap-4">
             {gruposOrdenados.length === 0 && <EmptyRow texto="Nada anunciado ainda pras suas séries." />}
             {gruposOrdenados.map((grupo) => (
               <div key={grupo.chave} className="flex flex-col gap-2">
-                {/* Rótulo do Dia (Pill Centralizada) */}
+                {/* Rótulo do Dia (Pill Centralizada) com fonte display robusta */}
                 <div className="flex justify-center my-3">
-                  <span className="bg-white/5 border border-white/5 text-ink text-[10px] font-mono font-bold uppercase px-3 py-1 rounded-full tracking-wider">
+                  <span className="bg-white/5 border border-white/5 text-ink text-[10px] font-display font-extrabold uppercase px-3 py-1 rounded-full tracking-wider">
                     {grupo.chave}
                   </span>
                 </div>
@@ -484,29 +492,29 @@ export default function SeriesPage() {
                         }
                       />
 
-                      {/* Centro: Metadados do Episódio */}
+                      {/* Centro: Metadados do Episódio com fontes display fortes */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
                         <button
                           onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
-                          className="text-[10px] font-mono font-bold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5"
+                          className="text-[10px] font-display font-extrabold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5 tracking-wider"
                         >
-                          {e.titulo?.nome} <ChevronRight size={10} />
+                          {e.titulo?.nome} <ChevronRight size={10} strokeWidth={3} />
                         </button>
                         
-                        <div className="text-sm font-display font-semibold text-ink mt-0.5">
+                        <div className="text-sm font-display font-bold text-ink mt-0.5">
                           S{String(e.season_number).padStart(2, '0')} | E{String(e.episode_number).padStart(2, '0')}
                         </div>
 
-                        <div className="text-xs text-muted truncate mt-0.5">
+                        <div className="text-xs text-muted font-display font-medium truncate mt-0.5">
                           {e.episode_name || 'TBA'}
                         </div>
                       </div>
 
-                      {/* Lado Direito: Dias Restantes, Horário e Canal de Lançamento */}
+                      {/* Lado Direito: Dias Restantes, Horário e Canal com fontes display de alta nitidez */}
                       <div className="flex flex-col items-end justify-center text-right flex-shrink-0 min-w-[70px]">
                         {e.diffDias === 0 || e.diffDias === 1 ? (
                           <>
-                            <div className="text-[10px] font-mono font-bold text-muted uppercase">
+                            <div className="text-[10px] font-display font-extrabold text-muted uppercase tracking-wider">
                               {e.diffDias === 0 ? 'HOJE' : 'AMANHÃ'}
                             </div>
                             {e.horario && (
@@ -514,24 +522,24 @@ export default function SeriesPage() {
                                 {e.horario}
                               </div>
                             )}
-                            <div className="text-[9px] font-mono text-muted uppercase mt-0.5 truncate max-w-[100px]">
+                            <div className="text-[9.5px] font-display font-semibold text-muted uppercase mt-0.5 truncate max-w-[100px] tracking-wide">
                               {e.canal}
                             </div>
                           </>
                         ) : (
                           <>
-                            <div className="text-xl font-display font-bold text-ink leading-none">
+                            <div className="text-xl font-display font-extrabold text-ink leading-none">
                               {e.diffDias}
                             </div>
-                            <div className="text-[9px] font-mono text-muted uppercase leading-none mt-0.5">
+                            <div className="text-[9px] font-display font-bold text-muted uppercase leading-none mt-0.5 tracking-wider">
                               DIAS
                             </div>
                             {e.horario && (
-                              <div className="text-[10px] font-mono text-ink mt-1">
+                              <div className="text-[10px] font-display font-semibold text-ink mt-1">
                                 {e.horario}
                               </div>
                             )}
-                            <div className="text-[9px] font-mono text-muted uppercase mt-0.5 truncate max-w-[100px]">
+                            <div className="text-[9.5px] font-display font-semibold text-muted uppercase mt-0.5 truncate max-w-[100px] tracking-wide">
                               {e.canal}
                             </div>
                           </>
