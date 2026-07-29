@@ -93,14 +93,20 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito para ajustar o scroll padrão escondendo o histórico no topo
+  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
       const t = setTimeout(() => {
         if (scrollContainerRef.current && paraAssistirRef.current) {
-          scrollContainerRef.current.scrollTop = paraAssistirRef.current.offsetTop
+          const parentRect = scrollContainerRef.current.getBoundingClientRect()
+          const childRect = paraAssistirRef.current.getBoundingClientRect()
+          
+          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
+          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
+          
+          scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }, 100)
+      }, 150) // Pequeno atraso de 150ms para estabilização de renderização dos cards
       return () => clearTimeout(t)
     }
   }, [carregando, aba, historico.length])
@@ -177,10 +183,6 @@ export default function SeriesPage() {
     const semTempo = []
 
     for (const item of itens.filter((i) => i.status === 'vendo')) {
-      // eps já vem ordenado por temporada/episódio (query em obterEpisodios). Acha o
-      // episódio assistido "mais adiante" na ordem e só considera "próximo" a partir
-      // dali - assim quem começou a ver do meio (ex: temporada 6) não recebe de volta
-      // o episódio 1 da temporada 1, que nunca foi assistido mas já ficou pra trás.
       const eps = episodios.filter((e) => e.titulo_id === item.titulo_id)
       let indiceInicial = 0
       for (let i = eps.length - 1; i >= 0; i--) {
@@ -218,7 +220,7 @@ export default function SeriesPage() {
       .select('watched_at, episode(id, season_number, episode_number, episode_name, titulo_id)')
       .eq('user_id', user.id)
       .order('watched_at', { ascending: false })
-      .limit(15) // Ajustado de 30 para os 10 últimos vistos
+      .limit(10) // Ajustado de 30 para os 10 últimos vistos
     if (erroHist) console.error('Erro ao buscar histórico:', erroHist)
 
     const idsHist = [...new Set((histBruto ?? []).map((h) => h.episode?.titulo_id).filter(Boolean))]
@@ -258,8 +260,6 @@ export default function SeriesPage() {
     recalcularBuckets(itensCache, episodiosCache, novoAssistidosMapa)
     setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
 
-    // Histórico continua vindo do banco (ordenado pela data real do servidor),
-    // mas isso não bloqueia a atualização visual acima.
     carregarHistorico()
   }
 
@@ -281,13 +281,13 @@ export default function SeriesPage() {
         onChange={setAba}
       />
 
-      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu. Ref adicionada para controle programático */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24">
+      {/* pb-24 e relative adicionados para dar folga e isolamento ao rolar o conteúdo */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24 relative">
         {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
 
         {!carregando && aba === 'lista' && (
           <>
-            {/* O histórico de exibição foi movido para o topo do fluxo de rolagem */}
+            {/* O histórico de exibição fica no topo do fluxo de rolagem */}
             {historico.length > 0 && (
               <>
                 <SectionLabel>Histórico de exibição</SectionLabel>
