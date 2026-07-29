@@ -33,6 +33,7 @@ export default function TituloDetalhe() {
     
     let tipoUrl = searchParams.get('tipo') 
 
+    // Fallback manual extremamente robusto para HashRouter no GitHub Pages
     if (!tipoUrl) {
       const hashParts = window.location.hash.split('?')
       if (hashParts.length > 1) {
@@ -62,8 +63,8 @@ export default function TituloDetalhe() {
       }).catch((err) => console.error('Erro ao registrar dados base:', err))
     }
 
-    // Funções auxiliares locais de paginação concorrente para superar o limite de 1000 linhas
-    const obterEpisodiosLocais = async () => {
+    // --- FUNÇÕES AUXILIARES DE PAGINAÇÃO CONCORRENTE (SUPERAM O LIMITE DE 1000 LINHAS) ---
+    const obterEpisodiosPaginados = async () => {
       if (tipo !== 'tv') return []
       let eps = []
       let de = 0
@@ -89,7 +90,7 @@ export default function TituloDetalhe() {
       return eps
     }
 
-    const obterAssistidosLocais = async () => {
+    const obterAssistidosPaginados = async () => {
       if (!user || tipo !== 'tv') return []
       let list = []
       let de = 0
@@ -114,15 +115,15 @@ export default function TituloDetalhe() {
       return list
     }
 
-    // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo
+    // --- LOTE PARALELO 1: Dispara TODAS as buscas simultaneamente para o banco local ---
     const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
       callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
       supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
       tipo === 'tv'
         ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
         : supabase.from('elenco_movie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? []),
-      obterEpisodiosLocais(),
-      obterAssistidosLocais(),
+      obterEpisodiosPaginados(),
+      obterAssistidosPaginados(),
       user ? supabase.from('user_item').select('status, favorito').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
       user ? supabase.from('user_rating').select('rating_score').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null
     ])
@@ -134,7 +135,7 @@ export default function TituloDetalhe() {
     setUserItem(item)
     setMinhaNota(rating?.rating_score ?? 0)
 
-    // Sincronização em Background Reativa silenciosa
+    // --- LOTE PARALELO 2: Sincronização silenciosa em background de novas temporadas ---
     if (existente && tipo === 'tv' && user) {
       callFunction('adicionar-titulo', { 
         tmdb_id: Number(id), 
@@ -142,7 +143,8 @@ export default function TituloDetalhe() {
         status: 'none' 
       })
       .then(async () => {
-        const novosEps = await obterEpisodiosLocais()
+        // Se a sincronização trouxer novas temporadas (como 22 e 23), recarrega os episódios localmente em tempo real
+        const novosEps = await obterEpisodiosPaginados()
         if (novosEps && novosEps.length > eps.length) {
           setEpisodios(novosEps)
           console.log(`[Importador] Novas temporadas e episódios sincronizados em background (${novosEps.length - eps.length} novos).`)
