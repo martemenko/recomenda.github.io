@@ -1,17 +1,27 @@
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import MobileShell from './components/MobileShell'
 import BottomTabBar from './components/BottomTabBar'
-import Login from './pages/Login'
-import ContaConfirmada from './pages/ContaConfirmada'
-import SeriesPage from './pages/SeriesPage'
-import FilmesPage from './pages/FilmesPage'
-import Explorar from './pages/Explorar'
-import Perfil from './pages/Perfil'
-import Configuracoes from './pages/Configuracoes'
-import TituloDetalhe from './pages/TituloDetalhe'
-import ListaDetalhe from './pages/ListaDetalhe'
-import EpisodioDetalhe from './pages/EpisodioDetalhe'
+
+const Login = lazy(() => import('./pages/Login'))
+const ContaConfirmada = lazy(() => import('./pages/ContaConfirmada'))
+const SeriesPage = lazy(() => import('./pages/SeriesPage'))
+const FilmesPage = lazy(() => import('./pages/FilmesPage'))
+const Explorar = lazy(() => import('./pages/Explorar'))
+const Perfil = lazy(() => import('./pages/Perfil'))
+const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const TituloDetalhe = lazy(() => import('./pages/TituloDetalhe'))
+const ListaDetalhe = lazy(() => import('./pages/ListaDetalhe'))
+const EpisodioDetalhe = lazy(() => import('./pages/EpisodioDetalhe'))
+
+function LoadingFallback() {
+  return (
+    <div className="flex-1 flex items-center justify-center text-muted text-sm font-mono animate-pulse">
+      Carregando...
+    </div>
+  )
+}
 
 function RotasPrivadas() {
   const { session } = useAuth()
@@ -20,7 +30,9 @@ function RotasPrivadas() {
   if (confirmado) {
     return (
       <MobileShell>
-        <ContaConfirmada />
+        <Suspense fallback={<LoadingFallback />}>
+          <ContaConfirmada />
+        </Suspense>
       </MobileShell>
     )
   }
@@ -28,30 +40,34 @@ function RotasPrivadas() {
   if (session === undefined) {
     return (
       <MobileShell>
-        <div className="flex-1 flex items-center justify-center text-muted text-sm font-mono">Carregando…</div>
+        <LoadingFallback />
       </MobileShell>
     )
   }
   if (!session) {
     return (
       <MobileShell>
-        <Login />
+        <Suspense fallback={<LoadingFallback />}>
+          <Login />
+        </Suspense>
       </MobileShell>
     )
   }
   return (
     <MobileShell>
-      <Routes>
-        <Route path="/series" element={<SeriesPage />} />
-        <Route path="/filmes" element={<FilmesPage />} />
-        <Route path="/explorar" element={<Explorar />} />
-        <Route path="/perfil" element={<Perfil />} />
-        <Route path="/configuracoes" element={<Configuracoes />} />
-        <Route path="/titulo/:id" element={<TituloDetalhe />} />
-        <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
-        <Route path="/lista/:id" element={<ListaDetalhe />} />
-        <Route path="*" element={<Navigate to="/series" replace />} />
-      </Routes>
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          <Route path="/series" element={<SeriesPage />} />
+          <Route path="/filmes" element={<FilmesPage />} />
+          <Route path="/explorar" element={<Explorar />} />
+          <Route path="/perfil" element={<Perfil />} />
+          <Route path="/configuracoes" element={<Configuracoes />} />
+          <Route path="/titulo/:id" element={<TituloDetalhe />} />
+          <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
+          <Route path="/lista/:id" element={<ListaDetalhe />} />
+          <Route path="*" element={<Navigate to="/series" replace />} />
+        </Routes>
+      </Suspense>
       <RodapeCondicional />
     </MobileShell>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
@@ -395,7 +395,9 @@ export default function TituloDetalhe() {
 
   if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
 
-  const temporadas = [...new Set(episodios.map((e) => e.season_number))]
+  const temporadas = useMemo(() => {
+    return [...new Set(episodios.map((e) => e.season_number))].sort((a, b) => a - b)
+  }, [episodios])
 
   return (
     <div className="flex-1 overflow-y-auto scroll-area relative">
@@ -515,10 +517,18 @@ export default function TituloDetalhe() {
       <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
         {elenco.map((c, i) => (
           <div key={i} className="flex-shrink-0 w-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden">
-              {c.ator?.image && <img src={`https://image.tmdb.org/t/p/w200${c.ator.image}`} className="w-full h-full object-cover" />}
+            <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden border border-white/5">
+              {c.ator?.image && (
+                <img
+                  src={`https://image.tmdb.org/t/p/w185${c.ator.image}`}
+                  alt={c.ator?.name || 'Ator'}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
-            <div className="text-[10px] text-ink mt-1 truncate">{c.ator?.name}</div>
+            <div className="text-[10px] text-ink mt-1 truncate font-medium">{c.ator?.name}</div>
             <div className="text-[9px] text-muted truncate">{c.personagem}</div>
           </div>
         ))}

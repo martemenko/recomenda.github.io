@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
@@ -17,22 +17,36 @@ export default function Explorar() {
     carregarTrending()
   }, [])
 
+  // Busca automática com debounce de 400ms para otimizar chamadas de rede
+  useEffect(() => {
+    if (!query.trim()) {
+      setResultados(null)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setCarregando(true)
+      try {
+        const { results } = await callFunction('buscar-titulo', { query: query.trim() })
+        setResultados(results ?? [])
+      } catch {
+        setResultados([])
+      } finally {
+        setCarregando(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [query])
+
   async function carregarTrending() {
     const { data } = await supabase.from('trending_semana').select('*').limit(15)
     setTrending(data ?? [])
   }
 
-  async function buscar(e) {
-    e.preventDefault()
-    if (!query.trim()) return
-    setCarregando(true)
-    try {
-      const { results } = await callFunction('buscar-titulo', { query })
-      setResultados(results ?? [])
-    } catch {
-      setResultados([])
-    }
-    setCarregando(false)
+  function limparBusca() {
+    setQuery('')
+    setResultados(null)
   }
 
   async function abrirResultado(item) {
@@ -41,7 +55,6 @@ export default function Explorar() {
 
   return (
     <>
-      {/* Corrige o alinhamento do menu inferior de navegação na borda física da tela */}
       <style>{`
         nav, footer, [class*="bottom-"] {
           bottom: 0 !important;
@@ -52,9 +65,8 @@ export default function Explorar() {
 
       <TopBar title="Explorar" />
       
-      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu de navegação */}
       <div className="flex-1 overflow-y-auto scroll-area pb-24">
-        <form onSubmit={buscar} className="px-4 py-3">
+        <div className="px-4 py-3">
           <div className="flex items-center gap-2 bg-surface border border-white/10 rounded-2xl px-4 py-3">
             <Search size={16} className="text-muted" />
             <input
@@ -63,8 +75,18 @@ export default function Explorar() {
               placeholder="Buscar série ou filme…"
               className="bg-transparent flex-1 text-sm text-ink placeholder:text-muted outline-none"
             />
+            {query && (
+              <button
+                onClick={limparBusca}
+                type="button"
+                className="text-muted hover:text-ink transition-colors p-1"
+                aria-label="Limpar busca"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
-        </form>
+        </div>
 
         {carregando && <div className="px-4 text-muted text-sm font-mono">Buscando…</div>}
 
