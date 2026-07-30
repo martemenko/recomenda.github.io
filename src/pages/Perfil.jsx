@@ -11,8 +11,8 @@ import PosterCard from '../components/PosterCard'
 
 // O Supabase/PostgREST tem um limite padrão de "max rows" por requisição
 // (normalmente 1000), que corta a resposta mesmo se você pedir um .range()
-// maior. Pra buscar tudo de verdade, pagina em lotes e concatena até a
-// página voltar vazia ou menor que o tamanho pedido.
+// maior. Pra buscar tudo de verdade, pagina em lotes com ordenação determinística
+// e concatena até a página voltar vazia ou menor que o tamanho pedido.
 async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
   let todas = []
   let inicio = 0
@@ -27,6 +27,20 @@ async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
     inicio += tamanhoPagina
   }
   return todas
+}
+
+// Auxiliar para fatiar consultas `.in(...)` em lotes menores (evita estouro de tamanho de URL HTTP 414)
+async function buscarEmLotesIn(construirQueryBase, coluna, ids, tamanhoLote = 200) {
+  if (!ids || ids.length === 0) return []
+  let resultados = []
+  for (let i = 0; i < ids.length; i += tamanhoLote) {
+    const lote = ids.slice(i, i + tamanhoLote)
+    const res = await buscarTodasLinhas(() =>
+      construirQueryBase().in(coluna, lote)
+    )
+    resultados = resultados.concat(res)
+  }
+  return resultados
 }
 
 const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
@@ -93,11 +107,13 @@ export default function Perfil() {
       // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
       const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
         // 1. Histórico de episódios vistos (unificado: estatísticas + ordenação de séries)
+        // Ordenado deterministicamente por episode_id para garantir que a paginação >1000 funcione perfeitamente
         buscarTodasLinhas(() =>
           supabase
             .from('watched_episode')
-            .select('watched_at, episode(duration, titulo_id)')
+            .select('episode_id, watched_at, episode(duration, titulo_id)')
             .eq('user_id', user.id)
+            .order('episode_id', { ascending: true })
         ),
         // 2. Filmes e Séries marcados como vistos pelo usuário
         buscarTodasLinhas(() =>
@@ -106,6 +122,7 @@ export default function Perfil() {
             .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
             .eq('user_id', user.id)
             .eq('status', 'visto')
+            .order('titulo_id', { ascending: true })
         ),
         // 3. Itens favoritados (Séries e Filmes)
         buscarTodasLinhas(() =>
@@ -114,6 +131,7 @@ export default function Perfil() {
             .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
             .eq('user_id', user.id)
             .eq('favorito', true)
+            .order('titulo_id', { ascending: true })
         ),
         // 4. Minhas Listas personalizadas
         supabase
@@ -133,10 +151,11 @@ export default function Perfil() {
       const ultimaDataPorSerie = new Map()
       for (const e of epsComData) {
         const tid = e.episode?.titulo_id
-        if (!tid || !e.watched_at) continue
+        if (!tid) continue
+        const dataValida = e.watched_at ?? '1970-01-01T00:00:00Z'
         const atual = ultimaDataPorSerie.get(tid)
-        if (!atual || new Date(e.watched_at) > new Date(atual)) {
-          ultimaDataPorSerie.set(tid, e.watched_at)
+        if (!atual || new Date(dataValida) > new Date(atual)) {
+          ultimaDataPorSerie.set(tid, dataValida)
         }
       }
 
@@ -144,24 +163,31 @@ export default function Perfil() {
       const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
       const idsVistos = (filmesVistosRaw ?? []).map((i) => i.titulo_id)
 
-      // --- LOTE PARALELO 2: Dispara as 3 consultas dependentes simultaneamente (sem duplicatas) ---
+      // --- LOTE PARALELO 2: Dispara as 3 consultas dependentes simultaneamente em lotes seguros ---
       const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries] = await Promise.all([
         // A. Duração dos filmes vistos (usado tanto para estatísticas quanto para identificar filmes)
         idsVistos.length
-          ? buscarTodasLinhas(() =>
-              supabase
-                .from('movies')
-                .select('titulo_id, duration')
-                .in('titulo_id', idsVistos)
+          ? buscarEmLotesIn(
+              () => supabase.from('movies').select('titulo_id, duration').order('titulo_id', { ascending: true }),
+              'titulo_id',
+              idsVistos
             )
           : [],
         // B. Identificação de quais favoritos são séries (vs filmes)
         idsFavoritos.length
-          ? supabase.from('series').select('titulo_id').in('titulo_id', idsFavoritos).then((res) => res.data ?? [])
+          ? buscarEmLotesIn(
+              () => supabase.from('series').select('titulo_id').order('titulo_id', { ascending: true }),
+              'titulo_id',
+              idsFavoritos
+            )
           : [],
         // C. Dados visuais (imagens/nomes) para as Minhas Séries
         idsMinhasSeries.length
-          ? supabase.from('titulo').select('id, nome, imagem').in('id', idsMinhasSeries).then((res) => res.data ?? [])
+          ? buscarEmLotesIn(
+              () => supabase.from('titulo').select('id, nome, imagem').order('id', { ascending: true }),
+              'id',
+              idsMinhasSeries
+            )
           : []
       ])
 
