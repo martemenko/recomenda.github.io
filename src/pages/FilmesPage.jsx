@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { getCache, setCache, onCacheInvalidate } from '../lib/dataCache'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
@@ -29,16 +30,45 @@ export default function FilmesPage() {
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
-    if (user && aba === 'lista') carregarMeusFilmes()
+    if (!user || aba !== 'lista') return
+
+    const cacheKey = `filmes_lista_${user.id}`
+    const cached = getCache(cacheKey)
+
+    if (cached?.data) {
+      setMeusFilmes(cached.data)
+      setCarregando(false)
+      if (cached.isStale) carregarMeusFilmes(true)
+    } else {
+      carregarMeusFilmes(false)
+    }
+
+    const unsubscribe = onCacheInvalidate((keys) => {
+      if (!keys || keys.includes('filmes') || keys.includes('user_item')) {
+        carregarMeusFilmes(false)
+      }
+    })
+
+    return () => unsubscribe()
   }, [user, aba])
 
   useEffect(() => {
-    if (aba === 'em_breve') carregarEmBreve()
+    if (aba !== 'em_breve') return
+
+    const cacheKey = `filmes_em_breve_${generoAtivo ?? 'todos'}`
+    const cached = getCache(cacheKey)
+
+    if (cached?.data) {
+      setEmBreve(cached.data)
+      setCarregando(false)
+      if (cached.isStale) carregarEmBreve(true)
+    } else {
+      carregarEmBreve(false)
+    }
   }, [aba, generoAtivo])
 
-  async function carregarMeusFilmes() {
-    setCarregando(true)
-    // user_item não tem FK direta pra "movies" - mesma correção do SeriesPage
+  async function carregarMeusFilmes(isSilent = false) {
+    if (!isSilent) setCarregando(true)
     const { data: itensBrutos, error: erroItens } = await supabase
       .from('user_item')
       .select('titulo_id, titulo(nome, imagem)')
@@ -54,15 +84,19 @@ export default function FilmesPage() {
     if (erroMovies) console.error('Erro ao buscar movies:', erroMovies)
 
     const idsDeFilme = new Set((moviesEncontrados ?? []).map((m) => m.titulo_id))
-    setMeusFilmes((itensBrutos ?? []).filter((i) => idsDeFilme.has(i.titulo_id)))
+    const resultado = (itensBrutos ?? []).filter((i) => idsDeFilme.has(i.titulo_id))
+    setMeusFilmes(resultado)
+    setCache(`filmes_lista_${user.id}`, resultado)
     setCarregando(false)
   }
 
-  async function carregarEmBreve() {
-    setCarregando(true)
+  async function carregarEmBreve(isSilent = false) {
+    if (!isSilent) setCarregando(true)
     try {
       const { results } = await callFunction('soon-movies', { genre_id: generoAtivo, page: 1 })
-      setEmBreve(results ?? [])
+      const res = results ?? []
+      setEmBreve(res)
+      setCache(`filmes_em_breve_${generoAtivo ?? 'todos'}`, res)
     } catch (e) {
       setEmBreve([])
     }

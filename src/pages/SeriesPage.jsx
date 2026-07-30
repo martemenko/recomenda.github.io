@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { getCache, setCache, onCacheInvalidate, invalidateCache } from '../lib/dataCache'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
@@ -128,7 +129,36 @@ export default function SeriesPage() {
   const [emBreve, setEmBreve] = useState([])
 
   useEffect(() => {
-    if (user) carregar()
+    if (!user) return
+
+    const cacheKey = `series_data_${user.id}`
+    const cached = getCache(cacheKey)
+
+    if (cached?.data) {
+      const { itens, episodios, assistidosEntries, historicoData, emBreveData } = cached.data
+      setItensCache(itens)
+      setEpisodiosCache(episodios)
+      const novoAssistidosMapa = new Map(assistidosEntries)
+      setAssistidosMapa(novoAssistidosMapa)
+      recalcularBuckets(itens, episodios, novoAssistidosMapa)
+      setHistorico(historicoData ?? [])
+      setEmBreve(emBreveData ?? [])
+      setCarregando(false)
+
+      if (cached.isStale) {
+        carregar(true)
+      }
+    } else {
+      carregar(false)
+    }
+
+    const unsubscribe = onCacheInvalidate((keys) => {
+      if (!keys || keys.includes('series') || keys.includes('user_item')) {
+        carregar(false)
+      }
+    })
+
+    return () => unsubscribe()
   }, [user])
 
   // Alinha o scroll perfeitamente na seção "Para assistir" sempre que a aba lista é exibida
@@ -145,8 +175,8 @@ export default function SeriesPage() {
     }
   }, [carregando, aba])
 
-  async function carregar() {
-    setCarregando(true)
+  async function carregar(isSilent = false) {
+    if (!isSilent) setCarregando(true)
     try {
       const { data: itensBrutos, error: erroItens } = await supabase
         .from('user_item')
@@ -170,7 +200,14 @@ export default function SeriesPage() {
       if (tituloIds.length === 0) {
         setEpisodiosCache([]); setAssistidosMapa(new Map())
         setAssistirASeguir([]); setSemAssistirHaTempo([]); setEmBreve([])
-        await carregarHistorico()
+        const histRes = await carregarHistorico()
+        setCache(`series_data_${user.id}`, {
+          itens: [],
+          episodios: [],
+          assistidosEntries: [],
+          historicoData: histRes ?? [],
+          emBreveData: []
+        })
         return
       }
 
@@ -179,7 +216,7 @@ export default function SeriesPage() {
       const hojeLocalStr = obterDataLocalISO()
 
       // Dispara todas as consultas de forma concorrente em paralelo para máxima velocidade de carregamento
-      const [episodiosCompletos, assistidos, futurosBrutos] = await Promise.all([
+      const [episodiosCompletos, assistidos, futurosBrutos, histRes] = await Promise.all([
         obterEpisodios(activeTituloIds),
         obterAssistidos(user.id),
         supabase
@@ -203,7 +240,17 @@ export default function SeriesPage() {
       recalcularBuckets(itens, episodiosCompletos, novoAssistidosMapa)
 
       const tituloPorId = new Map(itens.map((i) => [i.titulo_id, i.titulo]))
-      setEmBreve((futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) })))
+      const emBreveFormatado = (futurosBrutos ?? []).map((e) => ({ ...e, titulo: tituloPorId.get(e.titulo_id) }))
+      setEmBreve(emBreveFormatado)
+
+      // Grava no cache central
+      setCache(`series_data_${user.id}`, {
+        itens,
+        episodios: episodiosCompletos,
+        assistidosEntries: Array.from(novoAssistidosMapa.entries()),
+        historicoData: histRes ?? [],
+        emBreveData: emBreveFormatado
+      })
 
     } catch (err) {
       console.error('Erro geral ao carregar as séries:', err)
@@ -278,6 +325,7 @@ export default function SeriesPage() {
       .reverse()
 
     setHistorico(historicoOrdenadoCrescente)
+    return historicoOrdenadoCrescente
   }
 
   // Marca/desmarca um episódio com atualização LOCAL (sem recarregar a tela toda):
@@ -298,6 +346,9 @@ export default function SeriesPage() {
       return
     }
 
+    // Invalida cache do perfil para atualizar estatísticas no perfil
+    invalidateCache('perfil')
+
     const novoAssistidosMapa = new Map(assistidosMapa)
     if (jaMarcado) novoAssistidosMapa.delete(episodeId)
     else novoAssistidosMapa.set(episodeId, new Date().toISOString())
@@ -308,7 +359,16 @@ export default function SeriesPage() {
 
     // Histórico continua vindo do banco (ordenado pela data real do servidor),
     // mas isso não bloqueia a atualização visual acima.
-    carregarHistorico()
+    const histNovo = await carregarHistorico()
+
+    // Atualiza cache local
+    setCache(`series_data_${user.id}`, {
+      itens: itensCache,
+      episodios: episodiosCache,
+      assistidosEntries: Array.from(novoAssistidosMapa.entries()),
+      historicoData: histNovo ?? [],
+      emBreveData: emBreve
+    })
   }
 
   // --- LÓGICA DE PROCESSO E AGRUPAMENTO DOS LANÇAMENTOS (EM BREVE) ---
