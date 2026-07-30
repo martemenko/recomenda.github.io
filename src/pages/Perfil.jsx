@@ -60,14 +60,17 @@ export default function Perfil() {
   async function carregar() {
     try {
       // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
-      const [epsComData, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
+      const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
         // 1. Histórico de episódios vistos (unificado: estatísticas + ordenação de séries)
-        buscarTodasLinhas(() =>
-          supabase
-            .from('watched_episode')
-            .select('watched_at, episode(duration, titulo_id)')
-            .eq('user_id', user.id)
-        ),
+        supabase
+          .from('watched_episode')
+          .select('watched_at, episode(duration, titulo_id)')
+          .eq('user_id', user.id)
+          .limit(3000)
+          .then((res) => {
+            if (res.error) console.error('Erro ao buscar watched_episode:', res.error)
+            return res.data ?? []
+          }),
         // 2. Filmes e Séries marcados como vistos pelo usuário
         supabase
           .from('user_item')
@@ -99,6 +102,8 @@ export default function Perfil() {
           })
       ])
 
+      const epsComData = epsComDataRes ?? []
+
       // Processamento em memória do histórico de episódios vistos (Minhas séries)
       const minutosTv = epsComData.reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
       const ultimaDataPorSerie = new Map()
@@ -115,13 +120,16 @@ export default function Perfil() {
       const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
       const idsVistos = (filmesVistosRaw ?? []).map((i) => i.titulo_id)
 
-      // --- LOTE PARALELO 2: Dispara as 4 consultas dependentes simultaneamente ---
-      const [moviesDuracao, seriesEntreFavoritos, titulosMinhasSeries, moviesEntreVistos] = await Promise.all([
-        // A. Duração dos filmes vistos (para estatísticas)
+      // --- LOTE PARALELO 2: Dispara as 3 consultas dependentes simultaneamente (sem duplicatas) ---
+      const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries] = await Promise.all([
+        // A. Duração dos filmes vistos (usado tanto para estatísticas quanto para identificar filmes)
         idsVistos.length
-          ? buscarTodasLinhas(() =>
-              supabase.from('movies').select('titulo_id, duration').in('titulo_id', idsVistos)
-            )
+          ? supabase
+              .from('movies')
+              .select('titulo_id, duration')
+              .in('titulo_id', idsVistos)
+              .limit(2000)
+              .then((res) => res.data ?? [])
           : [],
         // B. Identificação de quais favoritos são séries (vs filmes)
         idsFavoritos.length
@@ -130,12 +138,10 @@ export default function Perfil() {
         // C. Dados visuais (imagens/nomes) para as Minhas Séries
         idsMinhasSeries.length
           ? supabase.from('titulo').select('id, nome, imagem').in('id', idsMinhasSeries).then((res) => res.data ?? [])
-          : [],
-        // D. Identificação de quais vistos são filmes (vs séries)
-        idsVistos.length
-          ? supabase.from('movies').select('titulo_id').in('titulo_id', idsVistos).then((res) => res.data ?? [])
           : []
       ])
+
+      const moviesDuracao = moviesDuracaoRes ?? []
 
       // --- Processamento Local de Estatísticas ---
       const minutosFilme = moviesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
@@ -172,7 +178,7 @@ export default function Perfil() {
       )
 
       // --- Processamento Local de Meus Filmes ---
-      const idsMoviesConfirmados = new Set((moviesEntreVistos ?? []).map((m) => m.titulo_id))
+      const idsMoviesConfirmados = new Set(moviesDuracao.map((m) => m.titulo_id))
       setMeusFilmes(
         [...(filmesVistosRaw ?? [])]
           .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
