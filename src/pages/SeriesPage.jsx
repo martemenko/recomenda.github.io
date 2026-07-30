@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -312,60 +312,59 @@ export default function SeriesPage() {
   }
 
   // --- LÓGICA DE PROCESSO E AGRUPAMENTO DOS LANÇAMENTOS (EM BREVE) ---
-  const hojeCalculo = new Date()
-  hojeCalculo.setHours(0, 0, 0, 0)
+  const gruposOrdenados = useMemo(() => {
+    const hojeCalculo = new Date()
+    hojeCalculo.setHours(0, 0, 0, 0)
 
-  const DIAS_SEMANA = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO']
-  const gruposMapa = new Map()
+    const DIAS_SEMANA = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO']
+    const gruposMapa = new Map()
 
-  for (const e of emBreve) {
-    if (!e.launch_date) continue
+    for (const e of emBreve) {
+      if (!e.launch_date) continue
 
-    const partes = e.launch_date.split('-')
-    const dataLanc = new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10))
-    dataLanc.setHours(0, 0, 0, 0)
+      const partes = e.launch_date.split('-')
+      const dataLanc = new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10))
+      dataLanc.setHours(0, 0, 0, 0)
 
-    const diffTempo = dataLanc.getTime() - hojeCalculo.getTime()
-    
-    // Correção: Alterado de Math.ceil para Math.round para evitar desvios causados por minutos de fuso horário
-    const diffDias = Math.round(diffTempo / (1000 * 60 * 60 * 24))
+      const diffTempo = dataLanc.getTime() - hojeCalculo.getTime()
+      const diffDias = Math.round(diffTempo / (1000 * 60 * 60 * 24))
 
-    if (diffDias < 0) continue // Ignora episódios que já foram lançados
+      if (diffDias < 0) continue
 
-    let chaveGrupo = ''
-    let ordemGrupo = 0
+      let chaveGrupo = ''
+      let ordemGrupo = 0
 
-    if (diffDias === 0) {
-      chaveGrupo = 'HOJE'
-      ordemGrupo = 0
-    } else if (diffDias === 1) {
-      chaveGrupo = 'AMANHÃ'
-      ordemGrupo = 1
-    } else if (diffDias > 1 && diffDias < 7) {
-      chaveGrupo = DIAS_SEMANA[dataLanc.getDay()]
-      ordemGrupo = diffDias
-    } else {
-      chaveGrupo = 'MAIS TARDE'
-      ordemGrupo = 100 + diffDias
+      if (diffDias === 0) {
+        chaveGrupo = 'HOJE'
+        ordemGrupo = 0
+      } else if (diffDias === 1) {
+        chaveGrupo = 'AMANHÃ'
+        ordemGrupo = 1
+      } else if (diffDias > 1 && diffDias < 7) {
+        chaveGrupo = DIAS_SEMANA[dataLanc.getDay()]
+        ordemGrupo = diffDias
+      } else {
+        chaveGrupo = 'MAIS TARDE'
+        ordemGrupo = 100 + diffDias
+      }
+
+      const { canal, horario } = obterCanalEHorario(e.titulo_id, e.titulo?.nome)
+
+      const epFormatado = {
+        ...e,
+        diffDias,
+        canal,
+        horario,
+      }
+
+      if (!gruposMapa.has(chaveGrupo)) {
+        gruposMapa.set(chaveGrupo, { chave: chaveGrupo, ordem: ordemGrupo, itens: [] })
+      }
+      gruposMapa.get(chaveGrupo).itens.push(epFormatado)
     }
 
-    const { canal, horario } = obterCanalEHorario(e.titulo_id, e.titulo?.nome)
-
-    const epFormatado = {
-      ...e,
-      diffDias,
-      canal,
-      horario,
-    }
-
-    if (!gruposMapa.has(chaveGrupo)) {
-      gruposMapa.set(chaveGrupo, { chave: chaveGrupo, ordem: ordemGrupo, itens: [] })
-    }
-    gruposMapa.get(chaveGrupo).itens.push(epFormatado)
-  }
-
-  // Ordena os dias e grupos de forma cronológica
-  const gruposOrdenados = [...gruposMapa.values()].sort((a, b) => a.ordem - b.ordem)
+    return [...gruposMapa.values()].sort((a, b) => a.ordem - b.ordem)
+  }, [emBreve])
 
   return (
     <>
