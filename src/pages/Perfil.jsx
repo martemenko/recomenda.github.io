@@ -18,7 +18,10 @@ async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
   let inicio = 0
   while (true) {
     const { data, error } = await construirQuery().range(inicio, inicio + tamanhoPagina - 1)
-    if (error) throw error
+    if (error) {
+      console.error('[buscarTodasLinhas] Erro ao carregar pagina:', error)
+      break
+    }
     todas = todas.concat(data ?? [])
     if (!data || data.length < tamanhoPagina) break
     inicio += tamanhoPagina
@@ -90,35 +93,28 @@ export default function Perfil() {
       // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
       const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
         // 1. Histórico de episódios vistos (unificado: estatísticas + ordenação de séries)
-        supabase
-          .from('watched_episode')
-          .select('watched_at, episode(duration, titulo_id)')
-          .eq('user_id', user.id)
-          .limit(3000)
-          .then((res) => {
-            if (res.error) console.error('Erro ao buscar watched_episode:', res.error)
-            return res.data ?? []
-          }),
+        buscarTodasLinhas(() =>
+          supabase
+            .from('watched_episode')
+            .select('watched_at, episode(duration, titulo_id)')
+            .eq('user_id', user.id)
+        ),
         // 2. Filmes e Séries marcados como vistos pelo usuário
-        supabase
-          .from('user_item')
-          .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
-          .eq('user_id', user.id)
-          .eq('status', 'visto')
-          .then((res) => {
-            if (res.error) console.error('Erro ao buscar vistos:', res.error)
-            return res.data ?? []
-          }),
+        buscarTodasLinhas(() =>
+          supabase
+            .from('user_item')
+            .select('titulo_id, status_atualizado_em, status, titulo(id, nome, imagem)')
+            .eq('user_id', user.id)
+            .eq('status', 'visto')
+        ),
         // 3. Itens favoritados (Séries e Filmes)
-        supabase
-          .from('user_item')
-          .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
-          .eq('user_id', user.id)
-          .eq('favorito', true)
-          .then((res) => {
-            if (res.error) console.error('Erro ao buscar favoritos:', res.error)
-            return res.data ?? []
-          }),
+        buscarTodasLinhas(() =>
+          supabase
+            .from('user_item')
+            .select('titulo_id, status_atualizado_em, titulo(id, nome, imagem)')
+            .eq('user_id', user.id)
+            .eq('favorito', true)
+        ),
         // 4. Minhas Listas personalizadas
         supabase
           .from('lista')
@@ -152,12 +148,12 @@ export default function Perfil() {
       const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries] = await Promise.all([
         // A. Duração dos filmes vistos (usado tanto para estatísticas quanto para identificar filmes)
         idsVistos.length
-          ? supabase
-              .from('movies')
-              .select('titulo_id, duration')
-              .in('titulo_id', idsVistos)
-              .limit(2000)
-              .then((res) => res.data ?? [])
+          ? buscarTodasLinhas(() =>
+              supabase
+                .from('movies')
+                .select('titulo_id, duration')
+                .in('titulo_id', idsVistos)
+            )
           : [],
         // B. Identificação de quais favoritos são séries (vs filmes)
         idsFavoritos.length

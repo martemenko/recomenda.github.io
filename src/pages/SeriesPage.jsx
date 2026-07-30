@@ -161,17 +161,25 @@ export default function SeriesPage() {
     return () => unsubscribe()
   }, [user])
 
-  // Alinha o scroll perfeitamente na seção "Para assistir" sempre que a aba lista é exibida
+  // Alinha o scroll perfeitamente na seção "Para assistir" sempre que a aba lista é exibida, ocultando o histórico acima do topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
-      const t = setTimeout(() => {
+      const alinharScroll = () => {
         const container = scrollContainerRef.current
         const target = paraAssistirRef.current
         if (container && target) {
           container.scrollTop = target.offsetTop
         }
-      }, 60)
-      return () => clearTimeout(t)
+      }
+      alinharScroll()
+      const t1 = setTimeout(alinharScroll, 50)
+      const t2 = setTimeout(alinharScroll, 150)
+      const t3 = setTimeout(alinharScroll, 350)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+        clearTimeout(t3)
+      }
     }
   }, [carregando, aba])
 
@@ -450,7 +458,7 @@ export default function SeriesPage() {
 
         {!carregando && aba === 'lista' && (
           <>
-            {/* O histórico de exibição fica no topo do fluxo de rolagem */}
+            {/* O histórico de exibição fica no topo da lista (acima do Para Assistir) */}
             {historico.length > 0 && (
               <>
                 <SectionLabel>Histórico de exibição</SectionLabel>
@@ -515,7 +523,7 @@ export default function SeriesPage() {
               </>
             )}
 
-            {/* Este elemento recebe a referência que dita a posição padrão de abertura da página */}
+            {/* Este elemento recebe a referência e é a posição inicial visível da página */}
             <div ref={paraAssistirRef}>
               <SectionLabel>Para assistir</SectionLabel>
             </div>

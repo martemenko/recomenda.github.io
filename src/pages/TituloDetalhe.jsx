@@ -159,10 +159,6 @@ export default function TituloDetalhe() {
     setTitulo({ ...base, ...(traduzido ?? {}) })
     setElenco(cast)
     setEpisodios(eps)
-    if (eps && eps.length > 0) {
-      const temps = [...new Set(eps.map((e) => e.season_number))].sort((a, b) => a - b)
-      if (temps.length > 0) setTemporadaAberta((prev) => prev ?? temps[0])
-    }
     setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
     setUserItem(item)
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
@@ -399,11 +395,11 @@ export default function TituloDetalhe() {
     }
   }
 
-  if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
-
   const temporadas = useMemo(() => {
     return [...new Set(episodios.map((e) => e.season_number))].sort((a, b) => a - b)
   }, [episodios])
+
+  if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
 
   return (
     <div className="flex-1 overflow-y-auto scroll-area relative">
