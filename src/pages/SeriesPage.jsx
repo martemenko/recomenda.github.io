@@ -49,62 +49,63 @@ function obterCanalEHorario(tituloId, tituloNome) {
   return { canal: 'STREAMING', horario: '12:00' };
 }
 
-// Função auxiliar para buscar episódios de forma paginada e segura contra estouro de URL
-async function obterEpisodios(tituloIds) {
-  if (!tituloIds || tituloIds.length === 0) return []
-  let eps = []
-  let de = 0
-  const tamanho = 1000
-
+// Função auxiliar para buscar todas as linhas sem o limite padrão de 1000 do PostgREST
+async function buscarTodasLinhas(construirQuery, tamanhoPagina = 1000) {
+  let todas = []
+  let inicio = 0
   while (true) {
-    const { data, error } = await supabase
-      .from('episode')
-      .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-      .in('titulo_id', tituloIds)
-      .order('titulo_id', { ascending: true })
-      .order('season_number', { ascending: true })
-      .order('episode_number', { ascending: true })
-      .range(de, de + tamanho - 1)
-
+    const { data, error } = await construirQuery().range(inicio, inicio + tamanhoPagina - 1)
     if (error) {
-      console.error('Erro ao buscar episode (paginado):', error)
+      console.error('[buscarTodasLinhas] Erro ao carregar pagina:', error)
       break
     }
-    
     if (!data || data.length === 0) break
-    eps = [...eps, ...data]
-    
-    if (data.length < tamanho) break
-    de += tamanho
+    todas = todas.concat(data)
+    if (data.length < tamanhoPagina) break
+    inicio += tamanhoPagina
   }
-  return eps
+  return todas
 }
 
-// Função auxiliar para buscar episódios assistidos de forma paginada
-async function obterAssistidos(userId) {
-  let list = []
-  let de = 0
-  const tamanho = 1000
+// Função auxiliar para fatiar consultas .in() em lotes menores de 200 IDs (evita erro HTTP 414 de URL longa)
+async function buscarEmLotesIn(construirQueryBase, coluna, ids, tamanhoLote = 200) {
+  if (!ids || ids.length === 0) return []
+  let resultados = []
+  for (let i = 0; i < ids.length; i += tamanhoLote) {
+    const lote = ids.slice(i, i + tamanhoLote)
+    const res = await buscarTodasLinhas(() =>
+      construirQueryBase().in(coluna, lote)
+    )
+    resultados = resultados.concat(res)
+  }
+  return resultados
+}
 
-  while (true) {
-    const { data, error } = await supabase
+// Função auxiliar para buscar episódios de forma paginada e fatiada em lotes
+async function obterEpisodios(tituloIds) {
+  if (!tituloIds || tituloIds.length === 0) return []
+  return buscarEmLotesIn(
+    () =>
+      supabase
+        .from('episode')
+        .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+        .order('titulo_id', { ascending: true })
+        .order('season_number', { ascending: true })
+        .order('episode_number', { ascending: true }),
+    'titulo_id',
+    tituloIds
+  )
+}
+
+// Função auxiliar para buscar episódios assistidos sem limite de linhas
+async function obterAssistidos(userId) {
+  return buscarTodasLinhas(() =>
+    supabase
       .from('watched_episode')
       .select('episode_id, watched_at')
       .eq('user_id', userId)
-      .range(de, de + tamanho - 1)
-
-    if (error) {
-      console.error('Erro ao buscar watched_episode (paginado):', error)
-      break
-    }
-    
-    if (!data || data.length === 0) break
-    list = [...list, ...data]
-    
-    if (data.length < tamanho) break
-    de += tamanho
-  }
-  return list
+      .order('episode_id', { ascending: true })
+  )
 }
 
 export default function SeriesPage() {
@@ -186,22 +187,26 @@ export default function SeriesPage() {
   async function carregar(isSilent = false) {
     if (!isSilent) setCarregando(true)
     try {
-      const { data: itensBrutos, error: erroItens } = await supabase
-        .from('user_item')
-        .select('titulo_id, status, added_at, titulo(nome, imagem)')
-        .eq('user_id', user.id)
-        .in('status', ['vendo', 'visto', 'quero_ver']) // Mantido para listar séries novas
-      if (erroItens) console.error('Erro ao buscar user_item:', erroItens)
+      const itensBrutos = await buscarTodasLinhas(() =>
+        supabase
+          .from('user_item')
+          .select('titulo_id, status, added_at, titulo(nome, imagem)')
+          .eq('user_id', user.id)
+          .in('status', ['vendo', 'visto', 'quero_ver'])
+          .order('titulo_id', { ascending: true })
+      )
 
-      const idsCandidatos = (itensBrutos ?? []).map((i) => i.titulo_id)
-      const { data: seriesEncontradas, error: erroSeries } = await supabase
-        .from('series')
-        .select('titulo_id')
-        .in('titulo_id', idsCandidatos.length ? idsCandidatos : [0])
-      if (erroSeries) console.error('Erro ao buscar series:', erroSeries)
+      const idsCandidatos = itensBrutos.map((i) => i.titulo_id)
+      const seriesEncontradas = idsCandidatos.length
+        ? await buscarEmLotesIn(
+            () => supabase.from('series').select('titulo_id').order('titulo_id', { ascending: true }),
+            'titulo_id',
+            idsCandidatos
+          )
+        : []
 
-      const idsDeSerie = new Set((seriesEncontradas ?? []).map((s) => s.titulo_id))
-      const itens = (itensBrutos ?? []).filter((i) => idsDeSerie.has(i.titulo_id))
+      const idsDeSerie = new Set(seriesEncontradas.map((s) => s.titulo_id))
+      const itens = itensBrutos.filter((i) => idsDeSerie.has(i.titulo_id))
       setItensCache(itens)
 
       const tituloIds = itens.map((i) => i.titulo_id)
@@ -227,16 +232,16 @@ export default function SeriesPage() {
       const [episodiosCompletos, assistidos, futurosBrutos, histRes] = await Promise.all([
         obterEpisodios(activeTituloIds),
         obterAssistidos(user.id),
-        supabase
-          .from('episode')
-          .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
-          .in('titulo_id', tituloIds) // Próximos lançamentos buscam de todas as seguidas
-          .gt('launch_date', hojeLocalStr)
-          .order('launch_date', { ascending: true })
-          .then(res => {
-            if (res.error) console.error('Erro ao buscar em breve:', res.error)
-            return res.data ?? []
-          }),
+        buscarEmLotesIn(
+          () =>
+            supabase
+              .from('episode')
+              .select('id, titulo_id, season_number, episode_number, episode_name, launch_date')
+              .gt('launch_date', hojeLocalStr)
+              .order('launch_date', { ascending: true }),
+          'titulo_id',
+          tituloIds
+        ),
         carregarHistorico() // Processa a carga de histórico também em paralelo
       ])
 
