@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { MoreVertical, Plus, ChevronRight, LayoutGrid, ArrowLeft } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { getCache, setCache, onCacheInvalidate } from '../lib/dataCache'
 import { formatarDuracao } from '../lib/format'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
@@ -54,7 +55,34 @@ export default function Perfil() {
   const [secaoExpandida, setSecaoExpandida] = useState(null)
 
   useEffect(() => {
-    if (user) carregar()
+    if (!user) return
+
+    const cacheKey = `perfil_data_${user.id}`
+    const cached = getCache(cacheKey)
+
+    if (cached?.data) {
+      const { stats: cachedStats, seriesFavoritas: sf, filmesFavoritos: ff, minhasSeries: ms, meusFilmes: mf, listas: ls } = cached.data
+      setStats(cachedStats)
+      setSeriesFavoritas(sf ?? [])
+      setFilmesFavoritos(ff ?? [])
+      setMinhasSeries(ms ?? [])
+      setMeusFilmes(mf ?? [])
+      setListas(ls ?? [])
+
+      if (cached.isStale) {
+        carregar()
+      }
+    } else {
+      carregar()
+    }
+
+    const unsubscribe = onCacheInvalidate((keys) => {
+      if (!keys || keys.includes('perfil') || keys.includes('user_item') || keys.includes('watched_episode')) {
+        carregar()
+      }
+    })
+
+    return () => unsubscribe()
   }, [user])
 
   async function carregar() {
@@ -145,47 +173,45 @@ export default function Perfil() {
 
       // --- Processamento Local de Estatísticas ---
       const minutosFilme = moviesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
-      setStats({
+      const novoStats = {
         tempoTv: formatarDuracao(minutosTv).texto,
         episodios: epsComData.length,
         tempoFilme: formatarDuracao(minutosFilme).texto,
         filmes: moviesDuracao.length,
-      })
+      }
+      setStats(novoStats)
 
       // --- Processamento Local de Favoritos ---
       const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
       const ordenarPorData = (lista) =>
         [...lista].sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
 
-      setSeriesFavoritas(
-        ordenarPorData((favoritosRaw ?? []).filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
-          .map((f) => f.titulo)
-          .filter(Boolean)
-      )
-      setFilmesFavoritos(
-        ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
-          .map((f) => f.titulo)
-          .filter(Boolean)
-      )
+      const sfList = ordenarPorData((favoritosRaw ?? []).filter((f) => idsSeriesFavoritas.has(f.titulo_id)))
+        .map((f) => f.titulo)
+        .filter(Boolean)
+      setSeriesFavoritas(sfList)
+
+      const ffList = ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
+        .map((f) => f.titulo)
+        .filter(Boolean)
+      setFilmesFavoritos(ffList)
 
       // --- Processamento Local de Minhas Séries ---
       const mapaTitulosSeries = new Map((titulosMinhasSeries ?? []).map((t) => [t.id, t]))
-      setMinhasSeries(
-        idsMinhasSeries
-          .map((tid) => mapaTitulosSeries.get(tid))
-          .filter(Boolean)
-          .sort((a, b) => new Date(ultimaDataPorSerie.get(b.id)) - new Date(ultimaDataPorSerie.get(a.id)))
-      )
+      const msList = idsMinhasSeries
+        .map((tid) => mapaTitulosSeries.get(tid))
+        .filter(Boolean)
+        .sort((a, b) => new Date(ultimaDataPorSerie.get(b.id)) - new Date(ultimaDataPorSerie.get(a.id)))
+      setMinhasSeries(msList)
 
       // --- Processamento Local de Meus Filmes ---
       const idsMoviesConfirmados = new Set(moviesDuracao.map((m) => m.titulo_id))
-      setMeusFilmes(
-        [...(filmesVistosRaw ?? [])]
-          .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
-          .filter((f) => idsMoviesConfirmados.has(f.titulo_id))
-          .map((f) => f.titulo)
-          .filter(Boolean)
-      )
+      const mfList = [...(filmesVistosRaw ?? [])]
+        .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
+        .filter((f) => idsMoviesConfirmados.has(f.titulo_id))
+        .map((f) => f.titulo)
+        .filter(Boolean)
+      setMeusFilmes(mfList)
 
       // --- Processamento Local de Listas ---
       const listasOrdenadas = (listasData ?? []).map((l) => ({
@@ -193,6 +219,16 @@ export default function Perfil() {
         lista_item: [...l.lista_item].sort((a, b) => new Date(b.added_at) - new Date(a.added_at)),
       }))
       setListas(listasOrdenadas)
+
+      // Salva dados processados no cache central
+      setCache(`perfil_data_${user.id}`, {
+        stats: novoStats,
+        seriesFavoritas: sfList,
+        filmesFavoritos: ffList,
+        minhasSeries: msList,
+        meusFilmes: mfList,
+        listas: listasOrdenadas
+      })
 
     } catch (err) {
       console.error('[Perfil] Falha no carregamento paralelo:', err)

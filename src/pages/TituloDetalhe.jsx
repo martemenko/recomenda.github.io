@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { invalidateCache } from '../lib/dataCache'
 import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
@@ -207,6 +208,7 @@ export default function TituloDetalhe() {
 
   async function mudarStatus(novoStatus) {
     setMenuStatusAberto(false)
+    invalidateCache(['series', 'perfil', 'filmes'])
     
     // Atualização Visual Instantânea
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
@@ -226,6 +228,7 @@ export default function TituloDetalhe() {
 
   async function deixarDeSeguir() {
     setMenuStatusAberto(false)
+    invalidateCache(['series', 'perfil', 'filmes'])
     
     // Atualização Visual Instantânea (Desmarca de imediato na interface)
     const estadoAntes = userItem
@@ -246,6 +249,7 @@ export default function TituloDetalhe() {
   // Otimização: Heart de favoritar reage instantaneamente sem esperar a rede
   async function favoritar() {
     const novoFav = !userItem?.favorito
+    invalidateCache(['series', 'perfil', 'filmes'])
     
     // Atualização Visual Instantânea (Troca o preenchimento do coração na hora)
     setUserItem(prev => prev ? { ...prev, favorito: novoFav } : { status: 'quero_ver', favorito: novoFav })
@@ -266,6 +270,7 @@ export default function TituloDetalhe() {
   async function avaliar(nota) {
     if (!user) return
     setMinhaNota(nota) // Atualização visual imediata para manter as estrelas douradas
+    invalidateCache(['perfil'])
 
     try {
       // Envia a avaliação via Edge Function 'leave-eval'
@@ -291,6 +296,7 @@ export default function TituloDetalhe() {
   // Otimização: Marcações em massa agora acendem os checks em 0ms
   async function aplicarMarcacao(episodeIds, desmarcar) {
     setConfirmacao(null)
+    invalidateCache(['series', 'perfil', 'filmes'])
 
     // 1. Atualização Otimista Instantânea dos estados locais
     const novasMarcadas = new Set(assistidos)

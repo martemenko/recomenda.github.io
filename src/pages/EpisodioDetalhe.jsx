@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { invalidateCache } from '../lib/dataCache'
 import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w500'
@@ -118,6 +119,7 @@ export default function EpisodioDetalhe() {
     if (!user || !episodio) return
     const novoStatus = !assistido
     setAssistido(novoStatus)
+    invalidateCache(['series', 'perfil'])
 
     const isRealUser = user && user.id && user.id !== 'demo-user-id'
     try {
@@ -146,6 +148,7 @@ export default function EpisodioDetalhe() {
     if (!episodio) return
     const notaDada = minhaNota === nota ? 0 : nota
     setMinhaNota(notaDada)
+    invalidateCache(['perfil'])
 
     const isRealUser = user && user.id && user.id !== 'demo-user-id'
 
