@@ -1,6 +1,6 @@
-export default function SectionLabel({ children }) {
+export default function SectionLabel({ children, className = '' }) {
   return (
-    <div className="px-4 pt-5 pb-2 text-[12px] font-display font-semibold uppercase tracking-wide text-amber">
+    <div className={`px-4 pt-3 pb-1 text-[12px] font-display font-semibold uppercase tracking-wide text-amber ${className}`}>
       {children}
     </div>
   )

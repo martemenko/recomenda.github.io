@@ -11,6 +11,7 @@ import Perfil from './pages/Perfil'
 import Configuracoes from './pages/Configuracoes'
 import TituloDetalhe from './pages/TituloDetalhe'
 import ListaDetalhe from './pages/ListaDetalhe'
+import EpisodioDetalhe from './pages/EpisodioDetalhe'
 
 function RotasPrivadas() {
   const { session } = useAuth()
@@ -47,6 +48,7 @@ function RotasPrivadas() {
         <Route path="/perfil" element={<Perfil />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/titulo/:id" element={<TituloDetalhe />} />
+        <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
         <Route path="/lista/:id" element={<ListaDetalhe />} />
         <Route path="*" element={<Navigate to="/series" replace />} />
       </Routes>
@@ -54,11 +56,8 @@ function RotasPrivadas() {
     </MobileShell>
   )
 }
-// A barra inferior não aparece em telas de detalhe/configurações, só nas 4 abas principais
+// A barra inferior é mantida visível em todas as telas para facilitar navegação direta entre as abas principais
 function RodapeCondicional() {
-  const { pathname } = useLocation()
-  const abasPrincipais = ['/series', '/filmes', '/explorar', '/perfil']
-  if (!abasPrincipais.some((a) => pathname.startsWith(a))) return null
   return <BottomTabBar />
 }
 export default function App() {

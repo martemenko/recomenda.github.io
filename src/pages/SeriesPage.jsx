@@ -402,9 +402,9 @@ export default function SeriesPage() {
                       className="opacity-40 hover:opacity-75 transition-all duration-300"
                     >
                       <div className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between">
-                        {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                        {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                         <div
-                          onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
+                          onClick={() => navigate(`/episodio/${h.episode.id}`)}
                           className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
                           style={
                             h.episode.titulo?.imagem
@@ -425,18 +425,18 @@ export default function SeriesPage() {
                             </button>
                           </div>
                           
-                          {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                          {/* Temporada e Episódio (Navega para a tela EpisodioDetalhe) */}
                           <button
-                            onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
-                            className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                            onClick={() => navigate(`/episodio/${h.episode.id}`)}
+                            className="text-sm font-display font-bold text-ink mt-1.5 text-left hover:text-amber transition-colors"
                           >
                             S{String(h.episode.season_number).padStart(2, '0')} | E{String(h.episode.episode_number).padStart(2, '0')}
                           </button>
 
-                          {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                          {/* Nome do Episódio (Navega para a tela EpisodioDetalhe) */}
                           <button
-                            onClick={() => navigate(`/titulo/${h.episode.titulo_id}?tipo=tv`)}
-                            className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                            onClick={() => navigate(`/episodio/${h.episode.id}`)}
+                            className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left hover:text-ink transition-colors"
                           >
                             {h.episode.episode_name || 'TBA'}
                           </button>
@@ -470,9 +470,9 @@ export default function SeriesPage() {
                     saindoIds.has(l.episodeId) ? 'scale-95 opacity-0' : ''
                   }`}
                 >
-                  {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                  {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                   <div
-                    onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                    onClick={() => navigate(`/episodio/${l.episodeId}`)}
                     className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
                     style={
                       l.imagem
@@ -493,18 +493,18 @@ export default function SeriesPage() {
                       </button>
                     </div>
                     
-                    {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                    {/* Temporada e Episódio (Navega para a tela EpisodioDetalhe) */}
                     <button
-                      onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-                      className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                      onClick={() => navigate(`/episodio/${l.episodeId}`)}
+                      className="text-sm font-display font-bold text-ink mt-1.5 text-left hover:text-amber transition-colors"
                     >
                       S{String(l.temporada).padStart(2, '0')} | E{String(l.episodio).padStart(2, '0')}
                     </button>
 
-                    {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                    {/* Nome do Episódio (Navega para a tela EpisodioDetalhe) */}
                     <button
-                      onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-                      className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                      onClick={() => navigate(`/episodio/${l.episodeId}`)}
+                      className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left hover:text-ink transition-colors"
                     >
                       {l.episodioNome || 'TBA'}
                     </button>
@@ -532,9 +532,9 @@ export default function SeriesPage() {
                         saindoIds.has(l.episodeId) ? 'scale-95 opacity-0' : ''
                       }`}
                     >
-                      {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                      {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                       <div
-                        onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
+                        onClick={() => navigate(`/episodio/${l.episodeId}`)}
                         className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
                         style={
                           l.imagem
@@ -555,18 +555,18 @@ export default function SeriesPage() {
                           </button>
                         </div>
                         
-                        {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        {/* Temporada e Episódio (Navega para a tela EpisodioDetalhe) */}
                         <button
-                          onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-                          className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                          onClick={() => navigate(`/episodio/${l.episodeId}`)}
+                          className="text-sm font-display font-bold text-ink mt-1.5 text-left hover:text-amber transition-colors"
                         >
                           S{String(l.temporada).padStart(2, '0')} | E{String(l.episodio).padStart(2, '0')}
                         </button>
 
-                        {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        {/* Nome do Episódio (Navega para a tela EpisodioDetalhe) */}
                         <button
-                          onClick={() => navigate(`/titulo/${l.tituloId}?tipo=tv`)}
-                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                          onClick={() => navigate(`/episodio/${l.episodeId}`)}
+                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left hover:text-ink transition-colors"
                         >
                           {l.episodioNome || 'TBA'}
                         </button>
@@ -607,9 +607,9 @@ export default function SeriesPage() {
                       key={e.id}
                       className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between"
                     >
-                      {/* Lado Esquerdo: Poster (Futura rota de episódio, temporariamente leva para a série) */}
+                      {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                       <div
-                        onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
+                        onClick={() => navigate(`/episodio/${e.id}`)}
                         className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
                         style={
                           e.titulo?.imagem
@@ -630,18 +630,18 @@ export default function SeriesPage() {
                           </button>
                         </div>
                         
-                        {/* Temporada e Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        {/* Temporada e Episódio (Navega para a tela EpisodioDetalhe) */}
                         <button
-                          onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
-                          className="text-sm font-display font-bold text-ink mt-1.5 text-left"
+                          onClick={() => navigate(`/episodio/${e.id}`)}
+                          className="text-sm font-display font-bold text-ink mt-1.5 text-left hover:text-amber transition-colors"
                         >
                           S{String(e.season_number).padStart(2, '0')} | E{String(e.episode_number).padStart(2, '0')}
                         </button>
 
-                        {/* Nome do Episódio (Futura rota de episódio, temporariamente leva para a série) */}
+                        {/* Nome do Episódio (Navega para a tela EpisodioDetalhe) */}
                         <button
-                          onClick={() => navigate(`/titulo/${e.titulo_id}?tipo=tv`)}
-                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left"
+                          onClick={() => navigate(`/episodio/${e.id}`)}
+                          className="text-xs text-muted font-display font-medium truncate mt-0.5 text-left hover:text-ink transition-colors"
                         >
                           {e.episode_name || 'TBA'}
                         </button>

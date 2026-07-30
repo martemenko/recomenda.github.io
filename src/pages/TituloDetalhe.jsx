@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Heart, ChevronLeft, Star, Check } from 'lucide-react'
+import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import SectionLabel from '../components/SectionLabel'
@@ -13,6 +13,18 @@ function formatarData(dataStr) {
   const partes = dataStr.split('-')
   if (partes.length < 3) return 'TBA'
   return `${partes[2]}/${partes[1]}/${partes[0]}`
+}
+
+function formatarDataExtensa(dataStr) {
+  if (!dataStr) return 'TBA'
+  const partes = dataStr.split('-')
+  if (partes.length < 3) return 'TBA'
+  const ano = partes[0]
+  const mesIdx = parseInt(partes[1], 10) - 1
+  const dia = parseInt(partes[2], 10)
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+  const mesNome = meses[mesIdx] || partes[1]
+  return `${dia} de ${mesNome}. de ${ano}`
 }
 
 export default function TituloDetalhe() {
@@ -87,7 +99,7 @@ export default function TituloDetalhe() {
       while (true) {
         const { data, error } = await supabase
           .from('episode')
-          .select('id, season_number, episode_number, episode_name, launch_date')
+          .select('id, season_number, episode_number, episode_name, launch_date, sinopse, duration')
           .eq('titulo_id', id)
           .order('season_number', { ascending: true })
           .order('episode_number', { ascending: true })
@@ -146,9 +158,13 @@ export default function TituloDetalhe() {
     setTitulo({ ...base, ...(traduzido ?? {}) })
     setElenco(cast)
     setEpisodios(eps)
+    if (eps && eps.length > 0) {
+      const temps = [...new Set(eps.map((e) => e.season_number))].sort((a, b) => a - b)
+      if (temps.length > 0) setTemporadaAberta((prev) => prev ?? temps[0])
+    }
     setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
     setUserItem(item)
-    setMinhaNota(rating?.rating_score ?? 0)
+    setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
 
     // Sincronização em Background Reativa silenciosa
     if (existente && tipo === 'tv' && user) {
@@ -248,9 +264,18 @@ export default function TituloDetalhe() {
   }
 
   async function avaliar(nota) {
-    setMinhaNota(nota)
-    await callFunction('avaliar', { titulo_id: Number(id), rating_score: nota })
-    carregar()
+    if (!user) return
+    setMinhaNota(nota) // Atualização visual imediata para manter as estrelas douradas
+
+    try {
+      // Envia a avaliação via Edge Function 'leave-eval'
+      const res = await callFunction('leave-eval', { titulo_id: Number(id), rating_score: nota })
+      if (res?.error) {
+        console.warn('[avaliar] Nota registrada localmente. Alerta do servidor:', res.error)
+      }
+    } catch (err) {
+      console.warn('[avaliar] Erro na requisição de avaliação:', err)
+    }
   }
 
   function episodiosAntesDe(alvo) {
@@ -359,20 +384,41 @@ export default function TituloDetalhe() {
     }
   }
 
+  function handleVoltar() {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1)
+    } else {
+      const isTV = mediaType === 'tv' || searchParams.get('tipo') === 'tv' || (titulo && (titulo.temporadas > 0 || mediaType === 'tv'))
+      navigate(isTV ? '/series' : '/filmes')
+    }
+  }
+
   if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
 
   const temporadas = [...new Set(episodios.map((e) => e.season_number))]
 
   return (
-    <div className="flex-1 overflow-y-auto scroll-area">
-      <div className="relative">
+    <div className="flex-1 overflow-y-auto scroll-area relative">
+      {/* Barra de Topo Sticky com Botão de Voltar Aprimorado */}
+      <div className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-bg/95 via-bg/80 to-transparent backdrop-blur-md">
+        <button
+          onClick={handleVoltar}
+          aria-label="Voltar"
+          className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-ink flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer z-50"
+        >
+          <ChevronLeft size={22} />
+        </button>
+        <button
+          onClick={favoritar}
+          aria-label="Favoritar"
+          className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer z-50"
+        >
+          <Heart size={20} fill={userItem?.favorito ? '#ff4b5c' : 'none'} className={userItem?.favorito ? 'text-heart' : 'text-ink'} />
+        </button>
+      </div>
+
+      <div className="-mt-16 relative">
         {titulo.imagem && <img src={`${POSTER_BASE}${titulo.imagem}`} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
-        <button onClick={() => navigate(-1)} className="absolute top-3 left-3 bg-bg/70 rounded-full p-2 text-ink">
-          <ChevronLeft size={18} />
-        </button>
-        <button onClick={favoritar} className="absolute top-3 right-3 bg-bg/70 rounded-full p-2">
-          <Heart size={18} fill={userItem?.favorito ? '#ff4b5c' : 'none'} className={userItem?.favorito ? 'text-heart' : 'text-ink'} />
-        </button>
       </div>
 
       <div className="px-4 py-3">
@@ -421,12 +467,47 @@ export default function TituloDetalhe() {
           )}
         </div>
 
-        <div className="flex items-center gap-1 justify-center mt-4">
-          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-            <button key={n} onClick={() => avaliar(n)}>
-              <Star size={16} fill={n <= minhaNota ? '#f3c255' : 'none'} className={n <= minhaNota ? 'text-amber' : 'text-muted'} />
-            </button>
-          ))}
+        {/* Seção de Avaliação (Sua Nota 1 a 10) com Estrelas e Número Embaixo */}
+        <div className="bg-surface/70 border border-white/5 rounded-2xl p-4 pt-3 mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <SectionLabel className="!px-0 !pt-0">Sua nota</SectionLabel>
+            {minhaNota > 0 && (
+              <span className="text-xs font-display font-bold text-amber">
+                Sua nota: {minhaNota}/10
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-10 gap-1 pt-1">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+              const selecionada = num <= minhaNota
+              return (
+                <button
+                  key={num}
+                  onClick={() => avaliar(num)}
+                  aria-label={`Nota ${num}`}
+                  className={`flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-150 border cursor-pointer active:scale-95 ${
+                    selecionada
+                      ? 'bg-amber/15 border-amber/40 shadow-[0_0_10px_rgba(243,194,85,0.25)]'
+                      : 'bg-surface2/40 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <Star
+                    size={16}
+                    fill={selecionada ? '#f3c255' : 'none'}
+                    className={selecionada ? 'text-amber' : 'text-muted/40'}
+                  />
+                  <span
+                    className={`text-[11px] font-display font-bold mt-1 ${
+                      selecionada ? 'text-amber' : 'text-muted'
+                    }`}
+                  >
+                    {num}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -446,64 +527,171 @@ export default function TituloDetalhe() {
       {mediaType === 'tv' && (
         <>
           <SectionLabel>Episódios</SectionLabel>
-          <div className="px-4 pb-8 flex flex-col gap-2">
+          <div className="px-4 pb-12 flex flex-col gap-3">
             {temporadas.map((t) => {
               const epsDaTemporada = episodios.filter((e) => e.season_number === t)
-              // Filtra os episódios lançados para a exibição de progresso correto
               const lancadosDaTemporada = epsDaTemporada.filter((e) => e.launch_date && e.launch_date <= hojeString)
               const assistidosCount = epsDaTemporada.filter((e) => assistidos.has(e.id)).length
               const todasAssistidas = lancadosDaTemporada.length > 0 && assistidosCount === lancadosDaTemporada.length
+              const progressoPercent = epsDaTemporada.length > 0 ? Math.round((assistidosCount / epsDaTemporada.length) * 100) : 0
+              const isAberta = temporadaAberta === t
+
               return (
-                <div key={t} className="border border-white/10 rounded-2xl overflow-hidden">
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => setTemporadaAberta(temporadaAberta === t ? null : t)}
-                      className="flex-1 flex justify-between px-3 py-2 text-sm text-ink font-mono"
-                    >
-                      Temporada {t}
-                      <span className="text-muted">{assistidosCount}/{epsDaTemporada.length}</span>
-                    </button>
-                    <button
-                      onClick={() => marcarTemporada(t, todasAssistidas)}
-                      aria-label="Marcar temporada como vista"
-                      className={`w-8 h-8 mr-2 flex-shrink-0 rounded-full flex items-center justify-center border ${
-                        todasAssistidas ? 'bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
-                      }`}
-                    >
-                      <Check size={14} />
-                    </button>
+                <div key={t} className="bg-surface border border-white/10 rounded-2xl overflow-hidden transition-all shadow-sm">
+                  {/* Cabeçalho do Card da Temporada */}
+                  <div className="p-3.5 bg-surface2/50 border-b border-white/5">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setTemporadaAberta(isAberta ? null : t)}
+                        className="flex-1 text-left flex items-center justify-between group py-0.5"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-display font-semibold text-base text-ink group-hover:text-amber transition-colors">
+                              Temporada {t}
+                            </span>
+                            {todasAssistidas && (
+                              <span className="text-[10px] font-display font-medium px-2 py-0.5 rounded-full bg-teal/20 text-teal border border-teal/30">
+                                Concluída
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted font-sans mt-0.5">
+                            {assistidosCount}/{epsDaTemporada.length} episódios assistidos
+                          </div>
+                        </div>
+                        <div className="p-1 text-muted group-hover:text-ink transition-colors mr-1">
+                          {isAberta ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </div>
+                      </button>
+
+                      {/* Botão de marcar temporada inteira */}
+                      <button
+                        onClick={() => marcarTemporada(t, todasAssistidas)}
+                        aria-label="Marcar temporada como vista"
+                        title={todasAssistidas ? "Desmarcar temporada" : "Marcar toda a temporada como assistida"}
+                        className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border transition-all ${
+                          todasAssistidas
+                            ? 'bg-teal border-teal text-bg shadow-[0_0_12px_rgba(221,13,244,0.45)]'
+                            : 'border-white/15 text-muted hover:border-white/40 hover:text-ink'
+                        }`}
+                      >
+                        <Check size={16} strokeWidth={2.5} />
+                      </button>
+                    </div>
+
+                    {/* Barra de Progresso da Temporada */}
+                    <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden mt-3">
+                      <div
+                        className="bg-amber h-full transition-all duration-300 rounded-full"
+                        style={{ width: `${progressoPercent}%` }}
+                      />
+                    </div>
                   </div>
-                  {temporadaAberta === t && (
-                    <div className="flex flex-col">
+
+                  {/* Lista de Episódios Ampliada */}
+                  {isAberta && (
+                    <div className="p-2.5 flex flex-col gap-2.5 bg-bg/40">
                       {epsDaTemporada.map((e) => {
                         const marcado = assistidos.has(e.id)
-                        const lancado = e.launch_date && e.launch_date <= hojeString // Validação se o episódio já estreou [1]
+                        const lancado = e.launch_date && e.launch_date <= hojeString
 
                         if (lancado) {
                           return (
-                            <button
+                            <div
                               key={e.id}
-                              onClick={() => marcarEpisodio(e, marcado)}
-                              className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2 hover:bg-white/5 transition-colors"
+                              onClick={() => navigate(`/episodio/${e.id}`)}
+                              className="group relative flex items-center gap-3 p-3 bg-surface hover:bg-surface2 rounded-xl border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-[0.995]"
                             >
-                              <span className={marcado ? 'text-muted' : 'text-ink text-left'}>
-                                E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
-                              </span>
-                              <span className={marcado ? 'text-teal' : 'text-muted'}>{marcado ? '✓' : '○'}</span>
-                            </button>
+                              {/* Checkbox para marcar visto (sem acionar navegação da linha) */}
+                              <button
+                                onClick={(evt) => {
+                                  evt.stopPropagation()
+                                  marcarEpisodio(e, marcado)
+                                }}
+                                aria-label={marcado ? "Marcar como não visto" : "Marcar como visto"}
+                                className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border transition-all ${
+                                  marcado
+                                    ? 'bg-teal border-teal text-bg shadow-[0_0_10px_rgba(221,13,244,0.4)]'
+                                    : 'border-white/20 text-muted hover:border-white/40 hover:text-ink'
+                                }`}
+                              >
+                                <Check size={16} strokeWidth={2.5} />
+                              </button>
+
+                              {/* Miniatura / Badge do Episódio */}
+                              <div className="w-16 h-12 bg-surface2 rounded-lg overflow-hidden flex-shrink-0 relative border border-white/10 flex items-center justify-center">
+                                {titulo.imagem ? (
+                                  <img
+                                    src={`${POSTER_BASE}${titulo.imagem}`}
+                                    alt=""
+                                    className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity"
+                                  />
+                                ) : null}
+                                <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                                  <span className="font-display font-semibold text-xs text-ink drop-shadow">
+                                    E{String(e.episode_number).padStart(2, '0')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Informações Principais do Episódio */}
+                              <div className="flex-1 min-w-0">
+                                <div className="font-display font-medium text-sm text-ink truncate group-hover:text-amber transition-colors">
+                                  <span className="text-amber/90 font-semibold mr-1.5">{e.episode_number}.</span>
+                                  {e.episode_name}
+                                </div>
+                                <div className="text-xs text-muted font-sans mt-0.5 flex items-center gap-2">
+                                  {marcado ? (
+                                    <span className="text-teal font-medium">Assistido</span>
+                                  ) : (
+                                    <span>Lançamento: {formatarDataExtensa(e.launch_date)}</span>
+                                  )}
+                                  {e.duration && (
+                                    <span className="text-muted/60">· {e.duration} min</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Chevron de indicação de linha clicável */}
+                              <ChevronRight size={18} className="text-muted/40 group-hover:text-ink group-hover:translate-x-0.5 transition-all flex-shrink-0 mr-0.5" />
+                            </div>
                           )
                         } else {
-                          // Se o episódio não foi lançado na data atual, vira uma linha travada (não clicável)
-                          const dataTexto = e.launch_date ? formatarData(e.launch_date) : 'TBA'
+                          // Episódio Não Lançado / Inédito
                           return (
                             <div
                               key={e.id}
-                              className="flex items-center justify-between px-3 py-2 text-xs border-t border-surface2 opacity-50 cursor-not-allowed select-none"
+                              onClick={() => navigate(`/episodio/${e.id}`)}
+                              className="flex items-center gap-3 p-3 bg-surface/40 hover:bg-surface/80 rounded-xl border border-white/5 opacity-70 hover:opacity-100 transition-all cursor-pointer"
                             >
-                              <span className="text-muted text-left">
-                                E{String(e.episode_number).padStart(2, '0')} · {e.episode_name}
-                              </span>
-                              <span className="text-muted font-mono">{dataTexto}</span>
+                              <div className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border border-white/10 text-muted/40">
+                                <Lock size={14} />
+                              </div>
+                              <div className="w-16 h-12 bg-surface2 rounded-lg overflow-hidden flex-shrink-0 relative border border-white/5 flex items-center justify-center">
+                                {titulo.imagem ? (
+                                  <img
+                                    src={`${POSTER_BASE}${titulo.imagem}`}
+                                    alt=""
+                                    className="w-full h-full object-cover grayscale opacity-30"
+                                  />
+                                ) : null}
+                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                  <span className="font-display font-semibold text-xs text-muted">
+                                    E{String(e.episode_number).padStart(2, '0')}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-display font-medium text-sm text-muted truncate">
+                                  <span className="mr-1.5">{e.episode_number}.</span>
+                                  {e.episode_name}
+                                </div>
+                                <div className="text-xs text-muted/70 font-sans mt-0.5 flex items-center gap-1">
+                                  <Calendar size={12} className="text-muted/60" />
+                                  <span>Estreia em {formatarDataExtensa(e.launch_date)}</span>
+                                </div>
+                              </div>
                             </div>
                           )
                         }
