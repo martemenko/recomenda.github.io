@@ -4,52 +4,16 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { igdbQuery, igdbCoverUrl } from "../_shared/igdb.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const IGDB_CLIENT_ID = Deno.env.get("IGDB_CLIENT_ID")!;
-const IGDB_CLIENT_SECRET = Deno.env.get("IGDB_CLIENT_SECRET")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// Token da Twitch cacheado no módulo: como a Edge Function reaproveita a instância
-// entre invocações "quentes", isso evita pagar o round-trip de OAuth em toda chamada.
-let tokenCache: { token: string; expiraEm: number } | null = null;
-
-async function getIgdbToken(): Promise<string> {
-  if (tokenCache && tokenCache.expiraEm > Date.now()) {
-    return tokenCache.token;
-  }
-  const url = `https://id.twitch.tv/oauth2/token?client_id=${IGDB_CLIENT_ID}&client_secret=${IGDB_CLIENT_SECRET}&grant_type=client_credentials`;
-  const res = await fetch(url, { method: "POST" });
-  if (!res.ok) throw new Error(`Twitch OAuth -> HTTP ${res.status}`);
-  const data = await res.json();
-  tokenCache = {
-    token: data.access_token,
-    // Renova 60s antes do vencimento real, por margem de segurança
-    expiraEm: Date.now() + (data.expires_in - 60) * 1000,
-  };
-  return tokenCache.token;
-}
-
-async function igdbQuery(endpoint: string, apicalypseQuery: string) {
-  const token = await getIgdbToken();
-  const res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Client-ID": IGDB_CLIENT_ID,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "text/plain",
-    },
-    body: apicalypseQuery,
-  });
-  if (!res.ok) throw new Error(`IGDB ${endpoint} -> HTTP ${res.status}`);
-  return res.json();
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -101,9 +65,7 @@ serve(async (req) => {
         });
       }
 
-      const imagem = jogo.cover?.image_id
-        ? `https://images.igdb.com/igdb/image/upload/t_cover_big/${jogo.cover.image_id}.jpg`
-        : null;
+      const imagem = igdbCoverUrl(jogo.cover?.image_id);
 
       const launchDate = jogo.first_release_date
         ? new Date(jogo.first_release_date * 1000).toISOString().slice(0, 10)

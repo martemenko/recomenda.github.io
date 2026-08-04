@@ -1,12 +1,19 @@
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w342'
 
+// Imagens da TMDB vêm como path relativo (precisa prefixar POSTER_BASE); imagens
+// da IGDB (jogos) já vêm como URL absoluta (ver igdbCoverUrl no backend) — usar direto.
+function resolverUrlImagem(imagem) {
+  if (!imagem) return null
+  return imagem.startsWith('http') ? imagem : `${POSTER_BASE}${imagem}`
+}
+
 export default function PosterCard({ imagem, nome, badge, onClick }) {
   return (
     <button onClick={onClick} className="flex flex-col text-left w-full group">
       <div className="w-full aspect-[2/3] bg-surface2 rounded-2xl overflow-hidden relative shadow-[0_6px_18px_rgba(0,0,0,0.35)]">
         {imagem && (
           <img
-            src={`${POSTER_BASE}${imagem}`}
+            src={resolverUrlImagem(imagem)}
             alt={nome || 'Poster'}
             loading="lazy"
             decoding="async"
