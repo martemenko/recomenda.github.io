@@ -12,6 +12,17 @@ function urlPoster(caminho) {
   return caminho.startsWith('http') ? caminho : `${POSTER_BASE_THUMB}${caminho}`
 }
 
+// Id do resultado de busca, seja ele de qual fonte for (usado como chave/estado de loading)
+function ridDeResultado(r) {
+  return r.tmdb_id ?? r.igdb_id ?? r.id
+}
+
+function badgeDeResultado(mediaType) {
+  if (mediaType === 'tv') return 'Série'
+  if (mediaType === 'movie') return 'Filme'
+  return 'Jogo'
+}
+
 export default function ListaDetalhe() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -77,66 +88,77 @@ export default function ListaDetalhe() {
     if (!termoBusca.trim()) return
     setBuscando(true)
     try {
-      const { data, error } = await supabase.functions.invoke('buscar-titulo', {
-        body: { query: termoBusca.trim() },
-      })
-      if (error) {
-        console.error('[ListaDetalhe] Erro ao buscar título:', error)
-        setResultados([])
-        return
-      }
-      setResultados(data?.results ?? [])
+      // Paralelo e independente: se uma fonte falhar, a outra continua funcionando.
+      const [tituloRes, jogoRes] = await Promise.all([
+        supabase.functions.invoke('buscar-titulo', { body: { query: termoBusca.trim() } }),
+        supabase.functions.invoke('buscar-jogo', { body: { query: termoBusca.trim() } }),
+      ])
+      if (tituloRes.error) console.error('[ListaDetalhe] Erro ao buscar título:', tituloRes.error)
+      if (jogoRes.error) console.error('[ListaDetalhe] Erro ao buscar jogo:', jogoRes.error)
+      setResultados([...(tituloRes.data?.results ?? []), ...(jogoRes.data?.results ?? [])])
     } finally {
       setBuscando(false)
     }
   }
 
   async function adicionarTitulo(resultado) {
-    const tmdbId = resultado.tmdb_id ?? resultado.id
-    if (!tmdbId) return
-    setAdicionandoId(tmdbId)
+    const externalId = ridDeResultado(resultado)
+    const fonte = resultado.fonte ?? 'tmdb'
+    if (!externalId) return
+    setAdicionandoId(externalId)
     try {
-      // Garante que o título existe no catálogo antes de referenciá-lo em lista_item
+      // Resolve o titulo_id real via (fonte, external_id) — a PK de `titulo` é sintética
+      // (gerada pela sequence), não é mais seguro assumir que bate com o id externo.
       const { data: tituloExistente } = await supabase
         .from('titulo')
         .select('id, nome, imagem')
-        .eq('id', tmdbId)
+        .eq('fonte', fonte)
+        .eq('external_id', externalId)
         .maybeSingle()
 
       let tituloFinal = tituloExistente
+
       if (!tituloExistente) {
-        const { error: erroAdd } = await supabase.functions.invoke('adicionar-titulo', {
-          body: { tmdb_id: tmdbId, media_type: resultado.media_type || 'tv' },
-        })
-        if (erroAdd) {
-          alert(`Erro ao adicionar título: ${erroAdd.message}`)
+        const nomeFuncao = fonte === 'igdb' ? 'adicionar-jogo' : 'adicionar-titulo'
+        const corpo =
+          fonte === 'igdb'
+            ? { igdb_id: externalId, status: 'none' }
+            : { tmdb_id: externalId, media_type: resultado.media_type || 'tv', status: 'none' }
+
+        const { data: respAdd, error: erroAdd } = await supabase.functions.invoke(nomeFuncao, { body: corpo })
+        if (erroAdd || !respAdd?.titulo_id) {
+          alert(`Erro ao adicionar título: ${erroAdd?.message || 'resposta inválida do servidor'}`)
           return
         }
+
         const { data: tituloRecemCriado } = await supabase
           .from('titulo')
           .select('id, nome, imagem')
-          .eq('id', tmdbId)
+          .eq('id', respAdd.titulo_id)
           .maybeSingle()
         tituloFinal = tituloRecemCriado
       }
+
+      if (!tituloFinal) return
+      const tituloIdReal = tituloFinal.id
 
       const { data: itemExistente } = await supabase
         .from('lista_item')
         .select('titulo_id')
         .eq('lista_id', id)
-        .eq('titulo_id', tmdbId)
+        .eq('titulo_id', tituloIdReal)
         .maybeSingle()
 
       if (!itemExistente) {
         const { error: erroInsert } = await supabase
           .from('lista_item')
-          .insert({ lista_id: id, titulo_id: tmdbId })
+          .insert({ lista_id: id, titulo_id: tituloIdReal })
         if (erroInsert) {
           alert(`Erro ao adicionar à lista: ${erroInsert.message}`)
           return
         }
         setItens((prev) => [
-          { titulo_id: tmdbId, added_at: new Date().toISOString(), titulo: tituloFinal },
+          { titulo_id: tituloIdReal, added_at: new Date().toISOString(), titulo: tituloFinal },
           ...prev,
         ])
       }
@@ -255,7 +277,7 @@ export default function ListaDetalhe() {
                 type="text"
                 value={termoBusca}
                 onChange={(e) => setTermoBusca(e.target.value)}
-                placeholder="Nome do filme ou série"
+                placeholder="Nome do filme, série ou jogo"
                 autoFocus
                 className="flex-1 bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
               />
@@ -282,10 +304,10 @@ export default function ListaDetalhe() {
             {resultados.length > 0 && (
               <div className="space-y-2 max-h-72 overflow-y-auto scroll-area">
                 {resultados.map((r) => {
-                  const rid = r.tmdb_id ?? r.id
+                  const rid = ridDeResultado(r)
                   return (
                     <button
-                      key={rid}
+                      key={`${r.media_type}-${rid}`}
                       onClick={() => adicionarTitulo(r)}
                       disabled={adicionandoId === rid}
                       className="w-full flex items-center gap-3 text-left disabled:opacity-50"
@@ -300,6 +322,9 @@ export default function ListaDetalhe() {
                       />
                       <div className="text-xs text-ink font-display font-medium truncate flex-1">
                         {r.nome || r.title}
+                      </div>
+                      <div className="text-[9px] text-muted font-mono uppercase">
+                        {badgeDeResultado(r.media_type)}
                       </div>
                       <div className="text-[10px] text-amber font-mono">
                         {adicionandoId === rid ? 'adicionando...' : 'adicionar'}
