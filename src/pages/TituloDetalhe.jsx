@@ -15,6 +15,15 @@ function resolverUrlImagem(imagem) {
   return imagem.startsWith('http') ? imagem : `${POSTER_BASE}${imagem}`
 }
 
+// Capa de jogo (IGDB) fica pixelada no hero se usar o mesmo tamanho pequeno
+// do grid (t_cover_big, ~264x374) — troca pela variante 2x só aqui, onde a
+// imagem ocupa a largura inteira da tela.
+function resolverUrlImagemGrande(imagem) {
+  const url = resolverUrlImagem(imagem)
+  if (!url) return null
+  return url.includes('images.igdb.com') ? url.replace('/t_cover_big/', '/t_cover_big_2x/') : url
+}
+
 // Função auxiliar para formatar datas de YYYY-MM-DD para DD/MM/YYYY
 function formatarData(dataStr) {
   if (!dataStr) return 'TBA'
@@ -88,21 +97,6 @@ export default function TituloDetalhe() {
     }
     setMediaType(tipo)
 
-    const { data: existente } = await supabase
-      .from('titulo')
-      .select('id')
-      .eq('id', id)
-      .maybeSingle()
-
-    // Se o título for inédito no banco local, acionamos a ingestão base rápida com status "none"
-    if (!existente && user) {
-      await callFunction('adicionar-titulo', { 
-        tmdb_id: Number(id), 
-        media_type: tipo, 
-        status: 'none' 
-      }).catch((err) => console.error('Erro ao registrar dados base:', err))
-    }
-
     // Funções auxiliares locais de paginação concorrente para superar o limite de 1000 linhas
     const obterEpisodiosPaginados = async () => {
       if (tipo !== 'tv') return []
@@ -155,9 +149,13 @@ export default function TituloDetalhe() {
       return list
     }
 
-    // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo
+    // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo.
+    // Tradução só existe pra fonte TMDB (tv/movie) — pular pra jogo evita um round-trip
+    // que nunca acha nada (IGDB não passa por esse fluxo de tradução).
     const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
-      callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
+      tipo === 'game'
+        ? Promise.resolve(null)
+        : callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
       supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
       tipo === 'tv'
         ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
@@ -177,8 +175,9 @@ export default function TituloDetalhe() {
     setUserItem(item)
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
 
-    // Sincronização em Background Reativa silenciosa
-    if (existente && tipo === 'tv' && user) {
+    // Sincronização em Background Reativa silenciosa (reaproveita "base" — se veio
+    // preenchido, o título já existia antes desta carga, sem precisar de outra query)
+    if (base && tipo === 'tv' && user) {
       callFunction('adicionar-titulo', { 
         tmdb_id: Number(id), 
         media_type: 'tv', 
@@ -199,6 +198,7 @@ export default function TituloDetalhe() {
   async function adicionar(status = 'quero_ver') {
     const estadoTemporario = { status, favorito: false }
     setUserItem(estadoTemporario) // Atualização Visual Instantânea
+    invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
 
     const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
@@ -438,7 +438,7 @@ export default function TituloDetalhe() {
       </div>
 
       <div className="-mt-16 relative">
-        {titulo.imagem && <img src={resolverUrlImagem(titulo.imagem)} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
+        {titulo.imagem && <img src={resolverUrlImagemGrande(titulo.imagem)} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
       </div>
 
       <div className="px-4 py-3">

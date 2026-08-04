@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { invalidateCache } from '../lib/dataCache'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 
@@ -760,6 +761,7 @@ export default function Configuracoes() {
         }
       }
 
+      invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
       setPorcentagemProgresso(100)
       setProgresso('Importação concluída com sucesso!')
       setTimeout(() => {

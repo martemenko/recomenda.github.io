@@ -27,8 +27,13 @@ export default function Explorar() {
     const timer = setTimeout(async () => {
       setCarregando(true)
       try {
-        const { results } = await callFunction('buscar-titulo', { query: query.trim() })
-        setResultados(results ?? [])
+        // Paralelo e independente: se a IGDB falhar/demorar, a busca de série/filme
+        // continua funcionando normalmente (e vice-versa).
+        const [tmdbRes, igdbRes] = await Promise.all([
+          callFunction('buscar-titulo', { query: query.trim() }),
+          callFunction('buscar-jogo', { query: query.trim() }),
+        ])
+        setResultados([...(tmdbRes.results ?? []), ...(igdbRes.results ?? [])])
       } catch {
         setResultados([])
       } finally {
@@ -52,7 +57,15 @@ export default function Explorar() {
   async function abrirResultado(item) {
     // Resultado de busca pode ser um título ainda não ingerido — o resolver
     // cria/encontra o registro e só então navega para o titulo_id real.
-    navigate(`/titulo/novo/${item.tmdb_id}?tipo=${item.media_type}`)
+    const externalId = item.tmdb_id ?? item.igdb_id
+    const fonte = item.fonte ?? 'tmdb'
+    navigate(`/titulo/novo/${externalId}?tipo=${item.media_type}&fonte=${fonte}`)
+  }
+
+  function badgePorTipo(mediaType) {
+    if (mediaType === 'tv') return 'Série'
+    if (mediaType === 'movie') return 'Filme'
+    return 'Jogo'
   }
 
   return (
@@ -74,7 +87,7 @@ export default function Explorar() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar série ou filme…"
+              placeholder="Buscar série, filme ou jogo…"
               className="bg-transparent flex-1 text-sm text-ink placeholder:text-muted outline-none"
             />
             {query && (
@@ -101,10 +114,10 @@ export default function Explorar() {
             <div className="grid grid-cols-3 gap-3 px-4 pb-6">
               {resultados.map((r) => (
                 <PosterCard
-                  key={`${r.media_type}-${r.tmdb_id}`}
+                  key={`${r.media_type}-${r.tmdb_id ?? r.igdb_id}`}
                   imagem={r.imagem}
                   nome={r.nome}
-                  badge={r.media_type === 'tv' ? 'Série' : 'Filme'}
+                  badge={badgePorTipo(r.media_type)}
                   onClick={() => abrirResultado(r)}
                 />
               ))}
@@ -122,7 +135,7 @@ export default function Explorar() {
                   key={t.titulo_id}
                   imagem={t.imagem}
                   nome={t.nome}
-                  badge={t.media_type === 'tv' ? 'Série' : 'Filme'}
+                  badge={badgePorTipo(t.media_type)}
                   onClick={() => navigate(`/titulo/${t.titulo_id}?tipo=${t.media_type}`)}
                 />
               ))}
