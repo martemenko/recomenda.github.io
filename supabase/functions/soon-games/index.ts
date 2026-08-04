@@ -23,9 +23,11 @@ serve(async (req) => {
     const { genre_id, page = 1 } = await req.json().catch(() => ({}));
 
     const agoraUnix = Math.floor(Date.now() / 1000);
-    // category = 0 -> "jogo principal", exclui DLC/expansão/remaster/port/etc,
-    // que na IGDB ficam misturados na mesma tabela `games`.
-    const filtros = [`first_release_date > ${agoraUnix}`, "category = 0"];
+    // Nota: já tentamos "category = 0" pra restringir a jogo principal (excluindo
+    // DLC/expansão/etc), mas verificamos que zera a base inteira na IGDB — o campo
+    // aparentemente não é setado como 0 explícito pra jogo principal. Removido até
+    // confirmarmos o valor/sintaxe correta.
+    const filtros = [`first_release_date > ${agoraUnix}`];
     if (genre_id) filtros.push(`genres = ${Number(genre_id)}`);
     const where = filtros.join(" & ");
 
