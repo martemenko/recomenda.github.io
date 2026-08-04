@@ -125,6 +125,11 @@ export default function JogosPage() {
         {aba === 'em_breve' && (
           <>
             {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
+            {!carregando && emBreve.length === 0 && (
+              <div className="px-4 py-6 text-muted text-sm font-mono text-center">
+                Não foi possível carregar lançamentos agora.
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3 px-4 pb-6 pt-3">
               {emBreve.map((j) => (
                 <PosterCard
