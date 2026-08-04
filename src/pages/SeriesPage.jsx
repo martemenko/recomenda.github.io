@@ -162,6 +162,14 @@ export default function SeriesPage() {
     return () => unsubscribe()
   }, [user])
 
+  // O container de scroll é o mesmo elemento pras duas sub-abas (só o conteúdo interno
+  // troca) — sem isso, "Em breve" abre na posição de scroll que "Minha Lista" deixou.
+  useEffect(() => {
+    if (aba === 'em_breve' && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0
+    }
+  }, [aba])
+
   // Alinha o scroll perfeitamente na seção "Para assistir" sempre que a aba lista é exibida, ocultando o histórico acima do topo
   useEffect(() => {
     if (!carregando && aba === 'lista' && scrollContainerRef.current && paraAssistirRef.current) {
@@ -281,12 +289,21 @@ export default function SeriesPage() {
     const seguir = []
     const semTempo = []
 
+    // Agrupa episódios por série uma única vez (O(episódios)) em vez de filtrar a lista
+    // inteira pra cada série (O(séries × episódios)) — a ordem por temporada/episódio da
+    // query original (obterEpisodios) é preservada dentro de cada grupo.
+    const episodiosPorTitulo = new Map()
+    for (const e of episodios) {
+      if (!episodiosPorTitulo.has(e.titulo_id)) episodiosPorTitulo.set(e.titulo_id, [])
+      episodiosPorTitulo.get(e.titulo_id).push(e)
+    }
+
     for (const item of itens.filter((i) => i.status === 'vendo')) {
       // eps já vem ordenado por temporada/episódio (query em obterEpisodios). Acha o
       // episódio assistido "mais adiante" na ordem e só considera "próximo" a partir
       // dali - assim quem começou a ver do meio (ex: temporada 6) não recebe de volta
       // o episódio 1 da temporada 1, que nunca foi assistido mas já ficou pra trás.
-      const eps = episodios.filter((e) => e.titulo_id === item.titulo_id)
+      const eps = episodiosPorTitulo.get(item.titulo_id) ?? []
       let indiceInicial = 0
       for (let i = eps.length - 1; i >= 0; i--) {
         if (assistidosAtual.has(eps[i].id)) { indiceInicial = i + 1; break }
@@ -477,13 +494,18 @@ export default function SeriesPage() {
                         {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                         <div
                           onClick={() => navigate(`/episodio/${h.episode.id}`)}
-                          className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
-                          style={
-                            h.episode.titulo?.imagem
-                              ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${h.episode.titulo.imagem})` }
-                              : undefined
-                          }
-                        />
+                          className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                        >
+                          {h.episode.titulo?.imagem && (
+                            <img
+                              src={`https://image.tmdb.org/t/p/w200${h.episode.titulo.imagem}`}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                        </div>
 
                         {/* Centro: Informações do Episódio */}
                         <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -545,13 +567,18 @@ export default function SeriesPage() {
                   {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                   <div
                     onClick={() => navigate(`/episodio/${l.episodeId}`)}
-                    className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
-                    style={
-                      l.imagem
-                        ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${l.imagem})` }
-                        : undefined
-                    }
-                  />
+                    className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                  >
+                    {l.imagem && (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w200${l.imagem}`}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
 
                   {/* Centro: Informações do Episódio */}
                   <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -607,13 +634,18 @@ export default function SeriesPage() {
                       {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                       <div
                         onClick={() => navigate(`/episodio/${l.episodeId}`)}
-                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
-                        style={
-                          l.imagem
-                            ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${l.imagem})` }
-                            : undefined
-                        }
-                      />
+                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                      >
+                        {l.imagem && (
+                          <img
+                            src={`https://image.tmdb.org/t/p/w200${l.imagem}`}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
 
                       {/* Centro: Informações do Episódio */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -682,13 +714,18 @@ export default function SeriesPage() {
                       {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
                       <div
                         onClick={() => navigate(`/episodio/${e.id}`)}
-                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 bg-cover bg-center overflow-hidden flex-shrink-0 cursor-pointer"
-                        style={
-                          e.titulo?.imagem
-                            ? { backgroundImage: `url(https://image.tmdb.org/t/p/w200${e.titulo.imagem})` }
-                            : undefined
-                        }
-                      />
+                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                      >
+                        {e.titulo?.imagem && (
+                          <img
+                            src={`https://image.tmdb.org/t/p/w200${e.titulo.imagem}`}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
 
                       {/* Centro: Metadados do Episódio com fontes display fortes */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
