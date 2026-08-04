@@ -159,7 +159,7 @@ export default function FilmesPage() {
                   imagem={f.imagem}
                   nome={f.nome}
                   badge={f.data_lancamento?.slice(0, 4)}
-                  onClick={() => navigate(`/titulo/${f.tmdb_id}?tipo=movie`)}
+                  onClick={() => navigate(`/titulo/novo/${f.tmdb_id}?tipo=movie`)}
                 />
               ))}
             </div>

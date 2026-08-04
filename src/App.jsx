@@ -12,6 +12,7 @@ const Explorar = lazy(() => import('./pages/Explorar'))
 const Perfil = lazy(() => import('./pages/Perfil'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 const TituloDetalhe = lazy(() => import('./pages/TituloDetalhe'))
+const TituloResolver = lazy(() => import('./pages/TituloResolver'))
 const ListaDetalhe = lazy(() => import('./pages/ListaDetalhe'))
 const EpisodioDetalhe = lazy(() => import('./pages/EpisodioDetalhe'))
 
@@ -62,6 +63,7 @@ function RotasPrivadas() {
           <Route path="/explorar" element={<Explorar />} />
           <Route path="/perfil" element={<Perfil />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
+          <Route path="/titulo/novo/:externalId" element={<TituloResolver />} />
           <Route path="/titulo/:id" element={<TituloDetalhe />} />
           <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
           <Route path="/lista/:id" element={<ListaDetalhe />} />
