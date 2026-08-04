@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { intercalar } from '../lib/format'
+import { getCache, setCache } from '../lib/dataCache'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
@@ -13,6 +14,7 @@ export default function Explorar() {
   const [resultados, setResultados] = useState(null) // null = não buscou ainda
   const [trending, setTrending] = useState([])
   const [carregando, setCarregando] = useState(false)
+  const queryEmVooRef = useRef('')
 
   useEffect(() => {
     carregarTrending()
@@ -26,19 +28,24 @@ export default function Explorar() {
     }
 
     const timer = setTimeout(async () => {
+      const queryDaVez = query.trim()
+      queryEmVooRef.current = queryDaVez
       setCarregando(true)
       try {
         // Paralelo e independente: se a IGDB falhar/demorar, a busca de série/filme
         // continua funcionando normalmente (e vice-versa).
         const [tmdbRes, igdbRes] = await Promise.all([
-          callFunction('buscar-titulo', { query: query.trim() }),
-          callFunction('buscar-jogo', { query: query.trim() }),
+          callFunction('buscar-titulo', { query: queryDaVez }),
+          callFunction('buscar-jogo', { query: queryDaVez }),
         ])
+        // Se o usuário já digitou outra coisa enquanto essa busca estava em voo,
+        // descarta — evita uma resposta antiga (rede lenta) sobrescrever uma mais nova.
+        if (queryEmVooRef.current !== queryDaVez) return
         setResultados(intercalar(tmdbRes.results ?? [], igdbRes.results ?? []))
       } catch {
-        setResultados([])
+        if (queryEmVooRef.current === queryDaVez) setResultados([])
       } finally {
-        setCarregando(false)
+        if (queryEmVooRef.current === queryDaVez) setCarregando(false)
       }
     }, 400)
 
@@ -46,8 +53,15 @@ export default function Explorar() {
   }, [query])
 
   async function carregarTrending() {
+    const cacheKey = 'explorar_trending'
+    const cached = getCache(cacheKey)
+    if (cached?.data) {
+      setTrending(cached.data)
+      if (!cached.isStale) return
+    }
     const { data } = await supabase.from('trending_semana').select('*').limit(15)
     setTrending(data ?? [])
+    setCache(cacheKey, data ?? [])
   }
 
   function limparBusca() {
