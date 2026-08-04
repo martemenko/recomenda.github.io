@@ -49,14 +49,19 @@ serve(async (req) => {
 
     const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+    // titulo_id interno é resolvido via (fonte, external_id) — nunca mais assumido como == tmdb_id,
+    // já que a PK de `titulo` agora é sintética (gerada pela sequence) para conviver com outras fontes (ex: IGDB).
     const { data: existente } = await db
       .from("titulo")
       .select("id")
-      .eq("id", tmdb_id)
+      .eq("fonte", "tmdb")
+      .eq("external_id", tmdb_id)
       .maybeSingle();
 
     // Correção: Se for uma chamada de background síncrona (status === "none"), forçamos a atualização dos episódios [2]
     const forceUpdate = status === "none";
+
+    let tituloId: number | undefined = existente?.id;
 
     if (!existente || forceUpdate) {
       // Carrega os detalhes do título e os créditos/elenco em paralelo
@@ -65,17 +70,27 @@ serve(async (req) => {
         tmdbGet(`/${media_type}/${tmdb_id}/credits?language=pt-BR`)
       ]);
 
-      await db.from("titulo").upsert({
-        id: detalhes.id,
-        nome: detalhes.name ?? detalhes.title,
-        sinopse: detalhes.overview,
-        genero: (detalhes.genres ?? []).map((g: any) => g.name).join(", "),
-        imagem: detalhes.poster_path,
-      });
+      const { data: tituloRow, error: tituloErr } = await db
+        .from("titulo")
+        .upsert(
+          {
+            fonte: "tmdb",
+            external_id: tmdb_id,
+            nome: detalhes.name ?? detalhes.title,
+            sinopse: detalhes.overview,
+            genero: (detalhes.genres ?? []).map((g: any) => g.name).join(", "),
+            imagem: detalhes.poster_path,
+          },
+          { onConflict: "fonte,external_id" },
+        )
+        .select("id")
+        .single();
+      if (tituloErr) throw tituloErr;
+      tituloId = tituloRow.id;
 
       if (media_type === "tv") {
         await db.from("series").upsert({
-          titulo_id: detalhes.id,
+          titulo_id: tituloId,
           launch_date: detalhes.first_air_date || null,
           end_date: detalhes.last_air_date || null,
           temporadas: detalhes.number_of_seasons,
@@ -91,7 +106,7 @@ serve(async (req) => {
               );
               const episodios = (seasonData.episodes ?? []).map((ep: any) => ({
                 id: ep.id,
-                titulo_id: detalhes.id,
+                titulo_id: tituloId,
                 episode_name: ep.name,
                 sinopse: ep.overview,
                 duration: ep.runtime,
@@ -113,13 +128,13 @@ serve(async (req) => {
           await db.from("ator").upsert({ id: membro.id, name: membro.name, image: membro.profile_path });
           await db.from("elenco_serie").upsert({
             actor_id: membro.id,
-            titulo_id: detalhes.id,
+            titulo_id: tituloId,
             personagem: membro.character,
           });
         }
       } else {
         await db.from("movies").upsert({
-          titulo_id: detalhes.id,
+          titulo_id: tituloId,
           duration: detalhes.runtime,
           launch_date: detalhes.release_date || null,
         });
@@ -128,7 +143,7 @@ serve(async (req) => {
           await db.from("ator").upsert({ id: membro.id, name: membro.name, image: membro.profile_path });
           await db.from("elenco_movie").upsert({
             actor_id: membro.id,
-            titulo_id: detalhes.id,
+            titulo_id: tituloId,
             personagem: membro.character,
           });
         }
@@ -138,14 +153,14 @@ serve(async (req) => {
     if (status && status !== "none") {
       const { error: userItemErr } = await db.from("user_item").upsert({
         user_id: userId,
-        titulo_id: tmdb_id,
+        titulo_id: tituloId,
         status,
         favorito: false,
       });
       if (userItemErr) throw userItemErr;
     }
 
-    return new Response(JSON.stringify({ ok: true, ja_existia: !!existente }), {
+    return new Response(JSON.stringify({ ok: true, ja_existia: !!existente, titulo_id: tituloId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -50,7 +50,9 @@ export default function Explorar() {
   }
 
   async function abrirResultado(item) {
-    navigate(`/titulo/${item.tmdb_id}?tipo=${item.media_type}`)
+    // Resultado de busca pode ser um título ainda não ingerido — o resolver
+    // cria/encontra o registro e só então navega para o titulo_id real.
+    navigate(`/titulo/novo/${item.tmdb_id}?tipo=${item.media_type}`)
   }
 
   return (
