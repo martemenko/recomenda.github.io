@@ -8,6 +8,13 @@ import SectionLabel from '../components/SectionLabel'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 
+// Imagens da TMDB vêm como path relativo (precisa prefixar POSTER_BASE); imagens
+// da IGDB (jogos) já vêm como URL absoluta — usar direto.
+function resolverUrlImagem(imagem) {
+  if (!imagem) return null
+  return imagem.startsWith('http') ? imagem : `${POSTER_BASE}${imagem}`
+}
+
 // Função auxiliar para formatar datas de YYYY-MM-DD para DD/MM/YYYY
 function formatarData(dataStr) {
   if (!dataStr) return 'TBA'
@@ -72,7 +79,12 @@ export default function TituloDetalhe() {
     let tipo = tipoUrl
     if (!tipo) {
       const { data: serieRow } = await supabase.from('series').select('titulo_id').eq('titulo_id', id).maybeSingle()
-      tipo = serieRow ? 'tv' : 'movie'
+      if (serieRow) {
+        tipo = 'tv'
+      } else {
+        const { data: gameRow } = await supabase.from('games').select('titulo_id').eq('titulo_id', id).maybeSingle()
+        tipo = gameRow ? 'game' : 'movie'
+      }
     }
     setMediaType(tipo)
 
@@ -149,7 +161,9 @@ export default function TituloDetalhe() {
       supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
       tipo === 'tv'
         ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
-        : supabase.from('elenco_movie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? []),
+        : tipo === 'movie'
+        ? supabase.from('elenco_movie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
+        : Promise.resolve([]),
       obterEpisodiosPaginados(),
       obterAssistidosPaginados(),
       user ? supabase.from('user_item').select('status, favorito').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
@@ -204,7 +218,7 @@ export default function TituloDetalhe() {
 
   async function mudarStatus(novoStatus) {
     setMenuStatusAberto(false)
-    invalidateCache(['series', 'perfil', 'filmes'])
+    invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
     
     // Atualização Visual Instantânea
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
@@ -224,7 +238,7 @@ export default function TituloDetalhe() {
 
   async function deixarDeSeguir() {
     setMenuStatusAberto(false)
-    invalidateCache(['series', 'perfil', 'filmes'])
+    invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
     
     // Atualização Visual Instantânea (Desmarca de imediato na interface)
     const estadoAntes = userItem
@@ -245,7 +259,7 @@ export default function TituloDetalhe() {
   // Otimização: Heart de favoritar reage instantaneamente sem esperar a rede
   async function favoritar() {
     const novoFav = !userItem?.favorito
-    invalidateCache(['series', 'perfil', 'filmes'])
+    invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
     
     // Atualização Visual Instantânea (Troca o preenchimento do coração na hora)
     setUserItem(prev => prev ? { ...prev, favorito: novoFav } : { status: 'quero_ver', favorito: novoFav })
@@ -292,7 +306,7 @@ export default function TituloDetalhe() {
   // Otimização: Marcações em massa agora acendem os checks em 0ms
   async function aplicarMarcacao(episodeIds, desmarcar) {
     setConfirmacao(null)
-    invalidateCache(['series', 'perfil', 'filmes'])
+    invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
 
     // 1. Atualização Otimista Instantânea dos estados locais
     const novasMarcadas = new Set(assistidos)
@@ -391,7 +405,9 @@ export default function TituloDetalhe() {
       navigate(-1)
     } else {
       const isTV = mediaType === 'tv' || searchParams.get('tipo') === 'tv' || (titulo && (titulo.temporadas > 0 || mediaType === 'tv'))
-      navigate(isTV ? '/series' : '/filmes')
+      if (isTV) navigate('/series')
+      else if (mediaType === 'game') navigate('/jogos')
+      else navigate('/filmes')
     }
   }
 
@@ -422,7 +438,7 @@ export default function TituloDetalhe() {
       </div>
 
       <div className="-mt-16 relative">
-        {titulo.imagem && <img src={`${POSTER_BASE}${titulo.imagem}`} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
+        {titulo.imagem && <img src={resolverUrlImagem(titulo.imagem)} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
       </div>
 
       <div className="px-4 py-3">
@@ -458,10 +474,10 @@ export default function TituloDetalhe() {
             </button>
           )}
 
-          {mediaType === 'movie' && (
+          {(mediaType === 'movie' || mediaType === 'game') && (
             <button
               onClick={marcarFilmeVisto}
-              aria-label="Marcar como visto"
+              aria-label={mediaType === 'game' ? 'Marcar como jogado' : 'Marcar como visto'}
               className={`flex-shrink-0 w-12 h-12 rounded-2xl border flex items-center justify-center ${
                 userItem?.status === 'visto' ? 'bg-teal border-teal text-bg shadow-[0_0_14px_rgba(221,13,244,0.45)]' : 'border-white/15 text-muted'
               }`}
@@ -515,26 +531,30 @@ export default function TituloDetalhe() {
         </div>
       </div>
 
-      <SectionLabel>Elenco</SectionLabel>
-      <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
-        {elenco.map((c, i) => (
-          <div key={i} className="flex-shrink-0 w-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden border border-white/5">
-              {c.ator?.image && (
-                <img
-                  src={`https://image.tmdb.org/t/p/w185${c.ator.image}`}
-                  alt={c.ator?.name || 'Ator'}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-full object-cover"
-                />
-              )}
-            </div>
-            <div className="text-[10px] text-ink mt-1 truncate font-medium">{c.ator?.name}</div>
-            <div className="text-[9px] text-muted truncate">{c.personagem}</div>
+      {elenco.length > 0 && (
+        <>
+          <SectionLabel>Elenco</SectionLabel>
+          <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
+            {elenco.map((c, i) => (
+              <div key={i} className="flex-shrink-0 w-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden border border-white/5">
+                  {c.ator?.image && (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${c.ator.image}`}
+                      alt={c.ator?.name || 'Ator'}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="text-[10px] text-ink mt-1 truncate font-medium">{c.ator?.name}</div>
+                <div className="text-[9px] text-muted truncate">{c.personagem}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
       {mediaType === 'tv' && (
         <>

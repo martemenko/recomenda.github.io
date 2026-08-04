@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { Tv, Film, Search, User } from 'lucide-react'
+import { Tv, Film, Gamepad2, Search, User } from 'lucide-react'
 
 const abas = [
   { to: '/series', label: 'Séries', icon: Tv },
   { to: '/filmes', label: 'Filmes', icon: Film },
+  { to: '/jogos', label: 'Jogos', icon: Gamepad2 },
   { to: '/explorar', label: 'Explorar', icon: Search },
   { to: '/perfil', label: 'Perfil', icon: User },
 ]

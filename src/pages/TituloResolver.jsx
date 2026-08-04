@@ -15,18 +15,25 @@ export default function TituloResolver() {
   const [erro, setErro] = useState(false)
 
   const tipo = searchParams.get('tipo') || 'movie'
+  const fonte = searchParams.get('fonte') || 'tmdb'
 
   useEffect(() => {
     resolver()
-  }, [externalId, tipo])
+  }, [externalId, tipo, fonte])
 
   async function resolver() {
     setErro(false)
-    const res = await callFunction('adicionar-titulo', {
-      tmdb_id: Number(externalId),
-      media_type: tipo,
-      status: 'none',
-    })
+    const res =
+      fonte === 'igdb'
+        ? await callFunction('adicionar-jogo', {
+            igdb_id: Number(externalId),
+            status: 'none',
+          })
+        : await callFunction('adicionar-titulo', {
+            tmdb_id: Number(externalId),
+            media_type: tipo,
+            status: 'none',
+          })
 
     if (res?.titulo_id) {
       navigate(`/titulo/${res.titulo_id}?tipo=${tipo}`, { replace: true })
