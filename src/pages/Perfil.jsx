@@ -57,8 +57,10 @@ export default function Perfil() {
 
   const [seriesFavoritas, setSeriesFavoritas] = useState([])
   const [filmesFavoritos, setFilmesFavoritos] = useState([])
+  const [jogosFavoritos, setJogosFavoritos] = useState([])
   const [minhasSeries, setMinhasSeries] = useState([])
   const [meusFilmes, setMeusFilmes] = useState([])
+  const [meusJogos, setMeusJogos] = useState([])
 
   const [listas, setListas] = useState([])
   const [criandoLista, setCriandoLista] = useState(false)
@@ -78,12 +80,23 @@ export default function Perfil() {
     const cached = getCache(cacheKey)
 
     if (cached?.data) {
-      const { stats: cachedStats, seriesFavoritas: sf, filmesFavoritos: ff, minhasSeries: ms, meusFilmes: mf, listas: ls } = cached.data
+      const {
+        stats: cachedStats,
+        seriesFavoritas: sf,
+        filmesFavoritos: ff,
+        jogosFavoritos: jf,
+        minhasSeries: ms,
+        meusFilmes: mf,
+        meusJogos: mj,
+        listas: ls,
+      } = cached.data
       setStats(cachedStats)
       setSeriesFavoritas(sf ?? [])
       setFilmesFavoritos(ff ?? [])
+      setJogosFavoritos(jf ?? [])
       setMinhasSeries(ms ?? [])
       setMeusFilmes(mf ?? [])
+      setMeusJogos(mj ?? [])
       setListas(ls ?? [])
 
       if (cached.isStale) {
@@ -163,8 +176,8 @@ export default function Perfil() {
       const idsFavoritos = (favoritosRaw ?? []).map((f) => f.titulo_id)
       const idsVistos = (filmesVistosRaw ?? []).map((i) => i.titulo_id)
 
-      // --- LOTE PARALELO 2: Dispara as 3 consultas dependentes simultaneamente em lotes seguros ---
-      const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries] = await Promise.all([
+      // --- LOTE PARALELO 2: Dispara as 5 consultas dependentes simultaneamente em lotes seguros ---
+      const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries, gamesEntreFavoritos, gamesVistosRes] = await Promise.all([
         // A. Duração dos filmes vistos (usado tanto para estatísticas quanto para identificar filmes)
         idsVistos.length
           ? buscarEmLotesIn(
@@ -173,7 +186,7 @@ export default function Perfil() {
               idsVistos
             )
           : [],
-        // B. Identificação de quais favoritos são séries (vs filmes)
+        // B. Identificação de quais favoritos são séries (vs filmes/jogos)
         idsFavoritos.length
           ? buscarEmLotesIn(
               () => supabase.from('series').select('titulo_id').order('titulo_id', { ascending: true }),
@@ -188,10 +201,28 @@ export default function Perfil() {
               'id',
               idsMinhasSeries
             )
+          : [],
+        // D. Identificação de quais favoritos são jogos (vs séries/filmes)
+        idsFavoritos.length
+          ? buscarEmLotesIn(
+              () => supabase.from('games').select('titulo_id').order('titulo_id', { ascending: true }),
+              'titulo_id',
+              idsFavoritos
+            )
+          : [],
+        // E. Identificação de quais itens vistos são jogos (games não tem duração cadastrada,
+        // então aqui só confirma pertencimento — sem estatística de "tempo jogando")
+        idsVistos.length
+          ? buscarEmLotesIn(
+              () => supabase.from('games').select('titulo_id').order('titulo_id', { ascending: true }),
+              'titulo_id',
+              idsVistos
+            )
           : []
       ])
 
       const moviesDuracao = moviesDuracaoRes ?? []
+      const gamesVistos = gamesVistosRes ?? []
 
       // --- Processamento Local de Estatísticas ---
       const minutosFilme = moviesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
@@ -200,11 +231,15 @@ export default function Perfil() {
         episodios: epsComData.length,
         tempoFilme: formatarDuracao(minutosFilme).texto,
         filmes: moviesDuracao.length,
+        // Sem "tempo jogando": a tabela games não guarda duração/tempo de jogo, só
+        // launch_date/plataformas/desenvolvedora — não tem de onde tirar esse dado ainda.
+        jogos: gamesVistos.length,
       }
       setStats(novoStats)
 
       // --- Processamento Local de Favoritos ---
       const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
+      const idsGamesFavoritos = new Set((gamesEntreFavoritos ?? []).map((g) => g.titulo_id))
       const ordenarPorData = (lista) =>
         [...lista].sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
 
@@ -213,10 +248,17 @@ export default function Perfil() {
         .filter(Boolean)
       setSeriesFavoritas(sfList)
 
-      const ffList = ordenarPorData((favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id)))
+      const ffList = ordenarPorData(
+        (favoritosRaw ?? []).filter((f) => !idsSeriesFavoritas.has(f.titulo_id) && !idsGamesFavoritos.has(f.titulo_id))
+      )
         .map((f) => f.titulo)
         .filter(Boolean)
       setFilmesFavoritos(ffList)
+
+      const jfList = ordenarPorData((favoritosRaw ?? []).filter((f) => idsGamesFavoritos.has(f.titulo_id)))
+        .map((f) => f.titulo)
+        .filter(Boolean)
+      setJogosFavoritos(jfList)
 
       // --- Processamento Local de Minhas Séries ---
       const mapaTitulosSeries = new Map((titulosMinhasSeries ?? []).map((t) => [t.id, t]))
@@ -235,6 +277,15 @@ export default function Perfil() {
         .filter(Boolean)
       setMeusFilmes(mfList)
 
+      // --- Processamento Local de Meus Jogos ---
+      const idsGamesConfirmados = new Set(gamesVistos.map((g) => g.titulo_id))
+      const mjList = [...(filmesVistosRaw ?? [])]
+        .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
+        .filter((f) => idsGamesConfirmados.has(f.titulo_id))
+        .map((f) => f.titulo)
+        .filter(Boolean)
+      setMeusJogos(mjList)
+
       // --- Processamento Local de Listas ---
       const listasOrdenadas = (listasData ?? []).map((l) => ({
         ...l,
@@ -247,8 +298,10 @@ export default function Perfil() {
         stats: novoStats,
         seriesFavoritas: sfList,
         filmesFavoritos: ffList,
+        jogosFavoritos: jfList,
         minhasSeries: msList,
         meusFilmes: mfList,
+        meusJogos: mjList,
         listas: listasOrdenadas
       })
 
@@ -334,6 +387,7 @@ export default function Perfil() {
             <StatCard label="Episódios assistidos" valor={stats.episodios} />
             <StatCard label="Tempo vendo filmes" valor={stats.tempoFilme} />
             <StatCard label="Filmes assistidos" valor={stats.filmes} />
+            <StatCard label="Jogos jogados" valor={stats.jogos} />
           </div>
         )}
 
@@ -350,6 +404,12 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Filmes favoritos', itens: filmesFavoritos })}
         />
         <Prateleira
+          titulo="Jogos favoritos"
+          itens={jogosFavoritos}
+          navigate={navigate}
+          aoExpandir={() => setSecaoExpandida({ titulo: 'Jogos favoritos', itens: jogosFavoritos })}
+        />
+        <Prateleira
           titulo="Minhas séries"
           itens={minhasSeries}
           navigate={navigate}
@@ -360,6 +420,12 @@ export default function Perfil() {
           itens={meusFilmes}
           navigate={navigate}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus filmes', itens: meusFilmes })}
+        />
+        <Prateleira
+          titulo="Meus jogos"
+          itens={meusJogos}
+          navigate={navigate}
+          aoExpandir={() => setSecaoExpandida({ titulo: 'Meus jogos', itens: meusJogos })}
         />
 
         {/* Container mb-1 para manter o mesmo espaçamento das prateleiras anteriores */}

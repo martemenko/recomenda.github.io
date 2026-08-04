@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Search, Trash2, X } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import { intercalar } from '../lib/format'
 import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
 
@@ -95,7 +96,7 @@ export default function ListaDetalhe() {
       ])
       if (tituloRes.error) console.error('[ListaDetalhe] Erro ao buscar título:', tituloRes.error)
       if (jogoRes.error) console.error('[ListaDetalhe] Erro ao buscar jogo:', jogoRes.error)
-      setResultados([...(tituloRes.data?.results ?? []), ...(jogoRes.data?.results ?? [])])
+      setResultados(intercalar(tituloRes.data?.results ?? [], jogoRes.data?.results ?? []))
     } finally {
       setBuscando(false)
     }

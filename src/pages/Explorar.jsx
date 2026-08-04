@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
+import { intercalar } from '../lib/format'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
@@ -33,7 +34,7 @@ export default function Explorar() {
           callFunction('buscar-titulo', { query: query.trim() }),
           callFunction('buscar-jogo', { query: query.trim() }),
         ])
-        setResultados([...(tmdbRes.results ?? []), ...(igdbRes.results ?? [])])
+        setResultados(intercalar(tmdbRes.results ?? [], igdbRes.results ?? []))
       } catch {
         setResultados([])
       } finally {
