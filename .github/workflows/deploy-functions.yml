@@ -22,6 +22,13 @@ jobs:
         run: |
           for dir in supabase/functions/*/; do
             fn="${dir%/}"
+            base="$(basename "$fn")"
+            # Pastas prefixadas com "_" são módulos compartilhados, não functions
+            # (não têm index.ts próprio e não são publicadas pelo Supabase CLI)
+            if [[ "$base" == _* ]]; then
+              echo "Pulando $fn (módulo compartilhado)"
+              continue
+            fi
             echo "Checando $fn"
             deno check "$fn/index.ts"
           done
