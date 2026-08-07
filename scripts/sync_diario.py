@@ -39,35 +39,44 @@ def ids_alterados(tipo):
     return ids
 
 
-def ids_no_banco(tabela):
-    """Retorna todos os ids da tabela usando paginação para contornar o limite de 1000 linhas."""
-    ids = set()
+def mapa_tmdb_para_titulo(tabela_filha):
+    """Retorna {tmdb_id: titulo_id} para os títulos (fonte=tmdb) que têm linha na tabela filha
+    (series/movies). A PK de `titulo` é sintética desde a migração para múltiplas fontes
+    (ex: IGDB) — o vínculo com o id da TMDB é sempre via (fonte, external_id), nunca via id."""
+    mapa = {}
     start, page_size = 0, 1000
     while True:
-        resp = supabase.table(tabela).select("titulo_id").range(start, start + page_size - 1).execute()
+        resp = (
+            supabase.table("titulo")
+            .select(f"id, external_id, {tabela_filha}!inner(titulo_id)")
+            .eq("fonte", "tmdb")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
         data = resp.data
         if not data:
             break
-        ids.update(row["titulo_id"] for row in data)
+        mapa.update((row["external_id"], row["id"]) for row in data)
         if len(data) < page_size:
             break
         start += page_size
-    return ids
+    return mapa
 
 
-def atualizar_serie(tmdb_id):
+def atualizar_serie(tmdb_id, titulo_id):
     detalhes = tmdb_get(f"/tv/{tmdb_id}", {"language": "pt-BR"})
 
     supabase.table("titulo").upsert({
-        "id": detalhes["id"],
+        "fonte": "tmdb",
+        "external_id": tmdb_id,
         "nome": detalhes.get("name"),
         "sinopse": detalhes.get("overview"),
         "genero": ", ".join(g["name"] for g in detalhes.get("genres", [])),
         "imagem": detalhes.get("poster_path"),
-    }).execute()
+    }, on_conflict="fonte,external_id").execute()
 
     supabase.table("series").upsert({
-        "titulo_id": detalhes["id"],
+        "titulo_id": titulo_id,
         "launch_date": detalhes.get("first_air_date"),
         "end_date": detalhes.get("last_air_date"),
         "temporadas": detalhes.get("number_of_seasons"),
@@ -80,7 +89,7 @@ def atualizar_serie(tmdb_id):
         season_data = tmdb_get(f"/tv/{tmdb_id}/season/{temporada['season_number']}", {"language": "pt-BR"})
         episodios = [{
             "id": ep["id"],
-            "titulo_id": detalhes["id"],
+            "titulo_id": titulo_id,
             "episode_name": ep.get("name"),
             "sinopse": ep.get("overview"),
             "duration": ep.get("runtime"),
@@ -94,19 +103,20 @@ def atualizar_serie(tmdb_id):
     print(f"  - série atualizada: {detalhes.get('name')} ({tmdb_id})")
 
 
-def atualizar_filme(tmdb_id):
+def atualizar_filme(tmdb_id, titulo_id):
     detalhes = tmdb_get(f"/movie/{tmdb_id}", {"language": "pt-BR"})
 
     supabase.table("titulo").upsert({
-        "id": detalhes["id"],
+        "fonte": "tmdb",
+        "external_id": tmdb_id,
         "nome": detalhes.get("title"),
         "sinopse": detalhes.get("overview"),
         "genero": ", ".join(g["name"] for g in detalhes.get("genres", [])),
         "imagem": detalhes.get("poster_path"),
-    }).execute()
+    }, on_conflict="fonte,external_id").execute()
 
     supabase.table("movies").upsert({
-        "titulo_id": detalhes["id"],
+        "titulo_id": titulo_id,
         "duration": detalhes.get("runtime"),
         "launch_date": detalhes.get("release_date"),
     }).execute()
@@ -119,19 +129,19 @@ def main():
     alteradas_tv = ids_alterados("tv")
     alteradas_movie = ids_alterados("movie")
 
-    minhas_series = ids_no_banco("series")
-    meus_filmes = ids_no_banco("movies")
+    mapa_series = mapa_tmdb_para_titulo("series")
+    mapa_filmes = mapa_tmdb_para_titulo("movies")
 
-    para_atualizar_tv = alteradas_tv & minhas_series
-    para_atualizar_movie = alteradas_movie & meus_filmes
+    para_atualizar_tv = alteradas_tv & mapa_series.keys()
+    para_atualizar_movie = alteradas_movie & mapa_filmes.keys()
 
     print(f"{len(para_atualizar_tv)} série(s) do banco precisam de atualização.")
     for tmdb_id in para_atualizar_tv:
-        atualizar_serie(tmdb_id)
+        atualizar_serie(tmdb_id, mapa_series[tmdb_id])
 
     print(f"{len(para_atualizar_movie)} filme(s) do banco precisam de atualização.")
     for tmdb_id in para_atualizar_movie:
-        atualizar_filme(tmdb_id)
+        atualizar_filme(tmdb_id, mapa_filmes[tmdb_id])
 
     print("Sync diário concluído.")
 
