@@ -92,21 +92,34 @@ export default function EpisodioDetalhe() {
       }
 
       // 5. Buscar episódio anterior e próximo da mesma série
-      const { data: vizinhos } = await supabase
+      // (busca direta pelos vizinhos, evitando carregar a lista inteira de episódios
+      // que pode ultrapassar o limite padrão de linhas do Supabase em séries longas)
+      const sn = epData.season_number
+      const en = epData.episode_number
+
+      const { data: anteriorData } = await supabase
         .from('episode')
         .select('id, season_number, episode_number, episode_name')
         .eq('titulo_id', epData.titulo_id)
+        .or(`season_number.lt.${sn},and(season_number.eq.${sn},episode_number.lt.${en})`)
+        .order('season_number', { ascending: false })
+        .order('episode_number', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      setEpisodioAnterior(anteriorData || null)
+
+      const { data: proximoData } = await supabase
+        .from('episode')
+        .select('id, season_number, episode_number, episode_name')
+        .eq('titulo_id', epData.titulo_id)
+        .or(`season_number.gt.${sn},and(season_number.eq.${sn},episode_number.gt.${en})`)
         .order('season_number', { ascending: true })
         .order('episode_number', { ascending: true })
+        .limit(1)
+        .maybeSingle()
 
-      if (vizinhos && vizinhos.length > 0) {
-        const idx = vizinhos.findIndex((e) => e.id === Number(id))
-        if (idx > 0) setEpisodioAnterior(vizinhos[idx - 1])
-        else setEpisodioAnterior(null)
-
-        if (idx !== -1 && idx < vizinhos.length - 1) setProximoEpisodio(vizinhos[idx + 1])
-        else setProximoEpisodio(null)
-      }
+      setProximoEpisodio(proximoData || null)
 
     } catch (err) {
       console.error('Erro ao carregar EpisodioDetalhe:', err)
@@ -424,7 +437,7 @@ export default function EpisodioDetalhe() {
             {episodioAnterior ? (
               <button
                 onClick={() => navigate(`/episodio/${episodioAnterior.id}`)}
-                className="flex-1 p-3 bg-surface/50 hover:bg-surface border border-white/5 hover:border-white/15 rounded-xl flex items-center gap-2 text-left transition-all group"
+                className="flex-1 min-w-0 p-3 bg-surface/50 hover:bg-surface border border-white/5 hover:border-white/15 rounded-xl flex items-center gap-2 text-left transition-all group"
               >
                 <ChevronLeft size={16} className="text-muted group-hover:text-amber transition-colors flex-shrink-0" />
                 <div className="min-w-0">
@@ -439,7 +452,7 @@ export default function EpisodioDetalhe() {
             {proximoEpisodio ? (
               <button
                 onClick={() => navigate(`/episodio/${proximoEpisodio.id}`)}
-                className="flex-1 p-3 bg-surface/50 hover:bg-surface border border-white/5 hover:border-white/15 rounded-xl flex items-center justify-end text-right gap-2 transition-all group"
+                className="flex-1 min-w-0 p-3 bg-surface/50 hover:bg-surface border border-white/5 hover:border-white/15 rounded-xl flex items-center justify-end text-right gap-2 transition-all group"
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-display text-muted uppercase">Próximo</div>
