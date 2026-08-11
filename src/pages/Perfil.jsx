@@ -416,7 +416,7 @@ export default function Perfil() {
           background: #e2b144 !important;
         }
         /* Força a fixação e o alinhamento correto do menu de navegação à borda da tela */
-        nav, footer, [class*="bottom-"] {
+        nav, footer {
           bottom: 0 !important;
           margin-bottom: 0 !important;
           padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
