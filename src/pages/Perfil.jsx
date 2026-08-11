@@ -416,7 +416,7 @@ export default function Perfil() {
           background: #e2b144 !important;
         }
         /* Força a fixação e o alinhamento correto do menu de navegação à borda da tela */
-        nav, footer, [class*="bottom-"] {
+        nav, footer {
           bottom: 0 !important;
           margin-bottom: 0 !important;
           padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
@@ -451,9 +451,13 @@ export default function Perfil() {
               onClick={() => inputCapaRef.current?.click()}
               disabled={enviandoCapa}
               aria-label="Editar capa"
-              className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-ink flex items-center justify-center transition-all active:scale-95"
+              className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-ink flex items-center justify-center leading-none transition-all active:scale-95"
             >
-              {enviandoCapa ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+              {enviandoCapa ? (
+                <Loader2 size={15} className="block animate-spin" />
+              ) : (
+                <Camera size={15} className="block" />
+              )}
             </button>
           </div>
 
@@ -479,9 +483,13 @@ export default function Perfil() {
                 onClick={() => inputAvatarRef.current?.click()}
                 disabled={enviandoAvatar}
                 aria-label="Editar foto de perfil"
-                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-amber text-bg flex items-center justify-center border-2 border-bg active:scale-95"
+                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-amber text-bg flex items-center justify-center leading-none border-2 border-bg active:scale-95"
               >
-                {enviandoAvatar ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+                {enviandoAvatar ? (
+                  <Loader2 size={13} className="block animate-spin" />
+                ) : (
+                  <Camera size={13} className="block" />
+                )}
               </button>
             </div>
           </div>
