@@ -461,8 +461,8 @@ export default function Perfil() {
             </button>
           </div>
 
-          <div className="flex justify-center -mt-10 relative z-10">
-            <div className="relative">
+          <div className="flex justify-center -mt-10 relative z-10 pointer-events-none">
+            <div className="relative pointer-events-auto">
               <div className="w-20 h-20 rounded-full bg-surface2 border-4 border-bg overflow-hidden flex items-center justify-center">
                 {perfil?.foto_perfil ? (
                   <img src={perfil.foto_perfil} alt="Foto de perfil" className="w-full h-full object-cover" />
