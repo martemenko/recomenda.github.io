@@ -1,0 +1,27 @@
+name: Validar Migrations do Banco
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Iniciar Postgres local (Supabase)
+        run: supabase db start
+
+      - name: Aplicar todas as migrations do zero
+        run: supabase db reset
+
+      - name: Parar Postgres local
+        if: always()
+        run: supabase stop
