@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MoreVertical, Plus, ChevronRight, LayoutGrid, ArrowLeft } from 'lucide-react'
+import { MoreVertical, Plus, ChevronRight, LayoutGrid, ArrowLeft, Camera, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { getCache, setCache, onCacheInvalidate } from '../lib/dataCache'
@@ -51,7 +51,7 @@ function urlPoster(caminho) {
 }
 
 export default function Perfil() {
-  const { user, perfil } = useAuth()
+  const { user, perfil, recarregarPerfil } = useAuth()
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
 
@@ -67,6 +67,12 @@ export default function Perfil() {
   const [todasListasAbertas, setTodasListasAbertas] = useState(false)
   const [listaAtualIndex, setListaAtualIndex] = useState(0)
   const listasScrollRef = useRef(null)
+
+  // Upload de foto de perfil (avatar) e capa
+  const [enviandoAvatar, setEnviandoAvatar] = useState(false)
+  const [enviandoCapa, setEnviandoCapa] = useState(false)
+  const inputAvatarRef = useRef(null)
+  const inputCapaRef = useRef(null)
 
   // Seção atualmente expandida em tela cheia (ou null se nenhuma) - guarda o
   // título do cabeçalho e a lista completa de itens (já carregada em memória,
@@ -337,6 +343,56 @@ export default function Perfil() {
     setListaAtualIndex(index)
   }
 
+  // Upload de foto de perfil ou capa. Usa um nome de arquivo FIXO por usuário
+  // (não o nome original) para que um novo upload sobrescreva o anterior no
+  // bucket, em vez de acumular arquivos órfãos.
+  async function enviarImagem(file, tipo) {
+    if (!file || !user) return
+    const isAvatar = tipo === 'avatar'
+    const bucket = isAvatar ? 'avatars' : 'capas'
+    const colunaDb = isAvatar ? 'foto_perfil' : 'foto_capa'
+    const setEnviando = isAvatar ? setEnviandoAvatar : setEnviandoCapa
+
+    if (!file.type.startsWith('image/')) {
+      alert('Selecione um arquivo de imagem válido.')
+      return
+    }
+    const TAMANHO_MAX_MB = 5
+    if (file.size > TAMANHO_MAX_MB * 1024 * 1024) {
+      alert(`A imagem precisa ter no máximo ${TAMANHO_MAX_MB}MB.`)
+      return
+    }
+
+    setEnviando(true)
+    try {
+      const extensao = file.name.split('.').pop() || 'jpg'
+      const path = `${user.id}/foto.${extensao}`
+
+      const { error: erroUpload } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { upsert: true, cacheControl: '3600' })
+      if (erroUpload) throw erroUpload
+
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
+      // Cache-buster: sem isso o navegador/CDN pode continuar mostrando a
+      // imagem antiga em cache mesmo depois do upsert.
+      const urlComCacheBust = `${urlData.publicUrl}?v=${Date.now()}`
+
+      const { error: erroUpdate } = await supabase
+        .from('usuarios')
+        .update({ [colunaDb]: urlComCacheBust })
+        .eq('id', user.id)
+      if (erroUpdate) throw erroUpdate
+
+      await recarregarPerfil?.()
+    } catch (err) {
+      console.error(`Erro ao enviar ${tipo}:`, err)
+      alert(`Não foi possível enviar a imagem: ${err.message}`)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   return (
     <>
       {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina e fixar o menu inferior na borda */}
@@ -375,10 +431,63 @@ export default function Perfil() {
           </button>
         }
       />
-      
+
       {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu */}
       <div className="flex-1 overflow-y-auto scroll-area pb-24">
-        <div className="px-4 py-3 text-sm text-muted font-mono">{perfil?.username}</div>
+        {/* Capa (banner) + Avatar sobreposto, com botões de edição */}
+        <div className="relative">
+          <div className="w-full h-32 bg-surface2 relative overflow-hidden">
+            {perfil?.foto_capa && (
+              <img src={perfil.foto_capa} alt="Capa" className="w-full h-full object-cover" />
+            )}
+            <input
+              ref={inputCapaRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => enviarImagem(e.target.files?.[0], 'capa')}
+            />
+            <button
+              onClick={() => inputCapaRef.current?.click()}
+              disabled={enviandoCapa}
+              aria-label="Editar capa"
+              className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 text-ink flex items-center justify-center transition-all active:scale-95"
+            >
+              {enviandoCapa ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+            </button>
+          </div>
+
+          <div className="flex justify-center -mt-10 relative z-10">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full bg-surface2 border-4 border-bg overflow-hidden flex items-center justify-center">
+                {perfil?.foto_perfil ? (
+                  <img src={perfil.foto_perfil} alt="Foto de perfil" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-2xl font-display font-semibold text-muted">
+                    {perfil?.username?.[0]?.toUpperCase() ?? '?'}
+                  </span>
+                )}
+              </div>
+              <input
+                ref={inputAvatarRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => enviarImagem(e.target.files?.[0], 'avatar')}
+              />
+              <button
+                onClick={() => inputAvatarRef.current?.click()}
+                disabled={enviandoAvatar}
+                aria-label="Editar foto de perfil"
+                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-amber text-bg flex items-center justify-center border-2 border-bg active:scale-95"
+              >
+                {enviandoAvatar ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 py-3 text-center text-sm text-muted font-mono">{perfil?.username}</div>
 
         <SectionLabel>Estatísticas</SectionLabel>
         {stats && (
