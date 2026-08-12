@@ -135,8 +135,6 @@ export default function Perfil() {
     try {
       // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
       const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
-        // 1. Histórico de episódios vistos (unificado: estatísticas + ordenação de séries)
-        // Ordenado deterministicamente por episode_id para garantir que a paginação >1000 funcione perfeitamente
         buscarTodasLinhas(() =>
           supabase
             .from('watched_episode')
@@ -144,7 +142,6 @@ export default function Perfil() {
             .eq('user_id', user.id)
             .order('episode_id', { ascending: true })
         ),
-        // 2. Filmes e Séries marcados como vistos pelo usuário
         buscarTodasLinhas(() =>
           supabase
             .from('user_item')
@@ -153,7 +150,6 @@ export default function Perfil() {
             .eq('status', 'visto')
             .order('titulo_id', { ascending: true })
         ),
-        // 3. Itens favoritados (Séries e Filmes)
         buscarTodasLinhas(() =>
           supabase
             .from('user_item')
@@ -162,7 +158,6 @@ export default function Perfil() {
             .eq('favorito', true)
             .order('titulo_id', { ascending: true })
         ),
-        // 4. Minhas Listas personalizadas
         supabase
           .from('lista')
           .select('id, nome, lista_item(titulo_id, added_at, titulo(nome, imagem))')
@@ -175,7 +170,6 @@ export default function Perfil() {
 
       const epsComData = epsComDataRes ?? []
 
-      // Processamento em memória do histórico de episódios vistos (Minhas séries)
       const minutosTv = epsComData.reduce((soma, e) => soma + (e.episode?.duration ?? 0), 0)
       const ultimaDataPorSerie = new Map()
       for (const e of epsComData) {
@@ -194,7 +188,6 @@ export default function Perfil() {
 
       // --- LOTE PARALELO 2: Dispara as 5 consultas dependentes simultaneamente em lotes seguros ---
       const [moviesDuracaoRes, seriesEntreFavoritos, titulosMinhasSeries, gamesEntreFavoritos, gamesVistosRes] = await Promise.all([
-        // A. Duração dos filmes vistos (usado tanto para estatísticas quanto para identificar filmes)
         idsVistos.length
           ? buscarEmLotesIn(
               () => supabase.from('movies').select('titulo_id, duration').order('titulo_id', { ascending: true }),
@@ -202,7 +195,6 @@ export default function Perfil() {
               idsVistos
             )
           : [],
-        // B. Identificação de quais favoritos são séries (vs filmes/jogos)
         idsFavoritos.length
           ? buscarEmLotesIn(
               () => supabase.from('series').select('titulo_id').order('titulo_id', { ascending: true }),
@@ -210,7 +202,6 @@ export default function Perfil() {
               idsFavoritos
             )
           : [],
-        // C. Dados visuais (imagens/nomes) para as Minhas Séries
         idsMinhasSeries.length
           ? buscarEmLotesIn(
               () => supabase.from('titulo').select('id, nome, imagem').order('id', { ascending: true }),
@@ -218,7 +209,6 @@ export default function Perfil() {
               idsMinhasSeries
             )
           : [],
-        // D. Identificação de quais favoritos são jogos (vs séries/filmes)
         idsFavoritos.length
           ? buscarEmLotesIn(
               () => supabase.from('games').select('titulo_id').order('titulo_id', { ascending: true }),
@@ -226,8 +216,6 @@ export default function Perfil() {
               idsFavoritos
             )
           : [],
-        // E. Identificação de quais itens vistos são jogos (games não tem duração cadastrada,
-        // então aqui só confirma pertencimento — sem estatística de "tempo jogando")
         idsVistos.length
           ? buscarEmLotesIn(
               () => supabase.from('games').select('titulo_id').order('titulo_id', { ascending: true }),
@@ -240,20 +228,16 @@ export default function Perfil() {
       const moviesDuracao = moviesDuracaoRes ?? []
       const gamesVistos = gamesVistosRes ?? []
 
-      // --- Processamento Local de Estatísticas ---
       const minutosFilme = moviesDuracao.reduce((soma, f) => soma + (f.duration ?? 0), 0)
       const novoStats = {
         tempoTv: formatarDuracao(minutosTv).texto,
         episodios: epsComData.length,
         tempoFilme: formatarDuracao(minutosFilme).texto,
         filmes: moviesDuracao.length,
-        // Sem "tempo jogando": a tabela games não guarda duração/tempo de jogo, só
-        // launch_date/plataformas/desenvolvedora — não tem de onde tirar esse dado ainda.
         jogos: gamesVistos.length,
       }
       setStats(novoStats)
 
-      // --- Processamento Local de Favoritos ---
       const idsSeriesFavoritas = new Set((seriesEntreFavoritos ?? []).map((s) => s.titulo_id))
       const idsGamesFavoritos = new Set((gamesEntreFavoritos ?? []).map((g) => g.titulo_id))
       const ordenarPorData = (lista) =>
@@ -276,7 +260,6 @@ export default function Perfil() {
         .filter(Boolean)
       setJogosFavoritos(jfList)
 
-      // --- Processamento Local de Minhas Séries ---
       const mapaTitulosSeries = new Map((titulosMinhasSeries ?? []).map((t) => [t.id, t]))
       const msList = idsMinhasSeries
         .map((tid) => mapaTitulosSeries.get(tid))
@@ -284,7 +267,6 @@ export default function Perfil() {
         .sort((a, b) => new Date(ultimaDataPorSerie.get(b.id)) - new Date(ultimaDataPorSerie.get(a.id)))
       setMinhasSeries(msList)
 
-      // --- Processamento Local de Meus Filmes ---
       const idsMoviesConfirmados = new Set(moviesDuracao.map((m) => m.titulo_id))
       const mfList = [...(filmesVistosRaw ?? [])]
         .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
@@ -293,7 +275,6 @@ export default function Perfil() {
         .filter(Boolean)
       setMeusFilmes(mfList)
 
-      // --- Processamento Local de Meus Jogos ---
       const idsGamesConfirmados = new Set(gamesVistos.map((g) => g.titulo_id))
       const mjList = [...(filmesVistosRaw ?? [])]
         .sort((a, b) => new Date(b.status_atualizado_em) - new Date(a.status_atualizado_em))
@@ -302,14 +283,12 @@ export default function Perfil() {
         .filter(Boolean)
       setMeusJogos(mjList)
 
-      // --- Processamento Local de Listas ---
       const listasOrdenadas = (listasData ?? []).map((l) => ({
         ...l,
         lista_item: [...l.lista_item].sort((a, b) => new Date(b.added_at) - new Date(a.added_at)),
       }))
       setListas(listasOrdenadas)
 
-      // Salva dados processados no cache central
       setCache(`perfil_data_${user.id}`, {
         stats: novoStats,
         seriesFavoritas: sfList,
@@ -353,7 +332,6 @@ export default function Perfil() {
     setListaAtualIndex(index)
   }
 
-  // Abre o modal de recorte ao escolher um arquivo (não envia direto).
   function aoSelecionarArquivo(file, tipo) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -384,8 +362,13 @@ export default function Perfil() {
     if (!modalRecorte || !areaRecortePixels) return
     setSalvandoRecorte(true)
     try {
-      const blob = await getCroppedImg(modalRecorte.imagemSrc, areaRecortePixels)
-      await enviarImagem(blob, modalRecorte.tipo)
+      const isAvatar = modalRecorte.tipo === 'avatar'
+      const { blob, mimeType, extension } = await getCroppedImg(
+        modalRecorte.imagemSrc,
+        areaRecortePixels,
+        isAvatar
+      )
+      await enviarImagem(blob, modalRecorte.tipo, mimeType, extension)
       URL.revokeObjectURL(modalRecorte.imagemSrc)
       setModalRecorte(null)
     } catch (err) {
@@ -396,10 +379,7 @@ export default function Perfil() {
     }
   }
 
-  // Upload de foto de perfil ou capa. Recebe o Blob já recortado (sempre JPEG)
-  // e usa um nome de arquivo FIXO por usuário, pra sobrescrever o anterior no
-  // bucket em vez de acumular arquivos órfãos.
-  async function enviarImagem(blob, tipo) {
+  async function enviarImagem(blob, tipo, mimeType = 'image/jpeg', extension = 'jpg') {
     if (!blob || !user) return
     const isAvatar = tipo === 'avatar'
     const bucket = isAvatar ? 'avatars' : 'capas'
@@ -408,16 +388,14 @@ export default function Perfil() {
 
     setEnviando(true)
     try {
-      const path = `${user.id}/foto.jpg`
+      const path = `${user.id}/foto.${extension}`
 
       const { error: erroUpload } = await supabase.storage
         .from(bucket)
-        .upload(path, blob, { upsert: true, cacheControl: '3600', contentType: 'image/jpeg' })
+        .upload(path, blob, { upsert: true, cacheControl: '3600', contentType: mimeType })
       if (erroUpload) throw erroUpload
 
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
-      // Cache-buster: sem isso o navegador/CDN pode continuar mostrando a
-      // imagem antiga em cache mesmo depois do upsert.
       const urlComCacheBust = `${urlData.publicUrl}?v=${Date.now()}`
 
       const { error: erroUpdate } = await supabase
@@ -437,7 +415,6 @@ export default function Perfil() {
 
   return (
     <>
-      {/* Estilo CSS embutido para criar a barra de rolagem horizontal amarela fina e fixar o menu inferior na borda */}
       <style>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none !important;
@@ -457,7 +434,6 @@ export default function Perfil() {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #e2b144 !important;
         }
-        /* Força a fixação e o alinhamento correto do menu de navegação à borda da tela */
         nav, footer {
           bottom: 0 !important;
           margin-bottom: 0 !important;
@@ -474,9 +450,7 @@ export default function Perfil() {
         }
       />
 
-      {/* pb-24 adicionado para dar folga ao rolar o conteúdo acima do menu */}
       <div className="flex-1 overflow-y-auto scroll-area pb-24">
-        {/* Capa (banner) + Avatar sobreposto, com botões de edição */}
         <div className="relative">
           <div className="w-full h-32 bg-surface2 relative overflow-hidden">
             {perfil?.foto_capa && (
@@ -563,7 +537,7 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Séries favoritas', itens: seriesFavoritas })}
         />
         <Prateleira
-          titulo="Filmes favoritas" // mantido conforme rótulo original
+          titulo="Filmes favoritas"
           itens={filmesFavoritos}
           navigate={navigate}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Filmes favoritos', itens: filmesFavoritos })}
@@ -593,7 +567,6 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus jogos', itens: meusJogos })}
         />
 
-        {/* Container mb-1 para manter o mesmo espaçamento das prateleiras anteriores */}
         <div className="mb-1">
           <div className="flex items-center justify-between pr-4">
             <SectionLabel>Minhas listas</SectionLabel>
@@ -613,7 +586,6 @@ export default function Perfil() {
             <div className="px-4 pb-8 text-muted text-sm font-mono">Nenhuma lista criada ainda.</div>
           ) : (
             <>
-              {/* Ocultada 100% da barra de rolagem horizontal e vertical usando no-scrollbar e scrollbarWidth none */}
               <div
                 ref={listasScrollRef}
                 onScroll={aoRolarListas}
@@ -695,7 +667,6 @@ export default function Perfil() {
             </button>
             <div className="text-base text-ink font-display font-semibold font-medium">Minhas listas</div>
           </div>
-          {/* Layout de prateleira vertical unificado baseado na página de perfil com altura fixa e sem scrollbars */}
           <div className="flex-1 overflow-y-auto scroll-area px-4 py-4 space-y-4">
             {listas.map((l) => (
               <div key={l.id} className="mb-2">
@@ -737,6 +708,7 @@ export default function Perfil() {
           </div>
         </div>
       )}
+
       {modalRecorte && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
           <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
@@ -788,7 +760,6 @@ export default function Perfil() {
   )
 }
 
-// Prateleira horizontal reutilizada pelas 4 seções de "top 10" (séries/filmes favoritos, minhas séries, meus filmes).
 function Prateleira({ titulo, itens, navigate, aoExpandir }) {
   return (
     <div className="mb-1">
@@ -803,7 +774,6 @@ function Prateleira({ titulo, itens, navigate, aoExpandir }) {
       {itens.length === 0 ? (
         <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
       ) : (
-        /* Adicionada as classes items-start e h-[220px] para alinhar os cartazes e evitar distorções de tamanho */
         <div 
           className="flex flex-nowrap items-start gap-3 px-4 pb-3 overflow-x-auto custom-scrollbar h-[220px]"
           style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
