@@ -496,7 +496,7 @@ export default function Perfil() {
 
       <div className="flex-1 overflow-y-auto scroll-area pb-24">
         <div className="relative">
-          <div className="w-full h-48 bg-surface2 relative overflow-hidden">
+          <div className="w-full h-50 bg-surface2 relative overflow-hidden">
             {perfil?.foto_capa && (
               <img src={perfil.foto_capa} alt="Capa" className="w-full h-full object-cover" />
             )}
@@ -526,7 +526,7 @@ export default function Perfil() {
 
           <div className="flex justify-center -mt-10 relative z-10 pointer-events-none">
             <div className="relative pointer-events-auto">
-              <div className="w-32 h-32 rounded-full bg-surface2 border-4 border-bg overflow-hidden flex items-center justify-center">
+              <div className="w-40 h-40 rounded-full bg-surface2 border-4 border-bg overflow-hidden flex items-center justify-center">
                 {perfil?.foto_perfil ? (
                   <img src={perfil.foto_perfil} alt="Foto de perfil" className="w-full h-full object-cover" />
                 ) : (
