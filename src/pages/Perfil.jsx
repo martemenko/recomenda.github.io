@@ -77,7 +77,7 @@ export default function Perfil() {
   const inputCapaRef = useRef(null)
 
   // Modal de recorte (zoom/arrastar) exibido antes de enviar a foto escolhida.
-  // { tipo: 'avatar' | 'capa', imagemSrc: objectURL } | null
+  // { tipo: 'avatar' | 'capa', imagemSrc: string (Base64) } | null
   const [modalRecorte, setModalRecorte] = useState(null)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -332,6 +332,7 @@ export default function Perfil() {
     setListaAtualIndex(index)
   }
 
+  // Leitura com FileReader resolve a falha de renderização no Safari/iOS
   function aoSelecionarArquivo(file, tipo) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -343,10 +344,15 @@ export default function Perfil() {
       alert(`A imagem precisa ter no máximo ${TAMANHO_MAX_MB}MB.`)
       return
     }
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-    setAreaRecortePixels(null)
-    setModalRecorte({ tipo, imagemSrc: URL.createObjectURL(file) })
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setAreaRecortePixels(null)
+      setModalRecorte({ tipo, imagemSrc: reader.result })
+    }
+    reader.readAsDataURL(file)
   }
 
   const aoCompletarRecorte = useCallback((_areaRecorte, areaEmPixels) => {
@@ -354,7 +360,6 @@ export default function Perfil() {
   }, [])
 
   function fecharModalRecorte() {
-    if (modalRecorte) URL.revokeObjectURL(modalRecorte.imagemSrc)
     setModalRecorte(null)
   }
 
@@ -369,7 +374,6 @@ export default function Perfil() {
         isAvatar
       )
       await enviarImagem(blob, modalRecorte.tipo, mimeType, extension)
-      URL.revokeObjectURL(modalRecorte.imagemSrc)
       setModalRecorte(null)
     } catch (err) {
       console.error('Erro ao recortar imagem:', err)
@@ -438,6 +442,19 @@ export default function Perfil() {
           bottom: 0 !important;
           margin-bottom: 0 !important;
           padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+        }
+        /* Ajustes do Modal Cropper para Safari e Estilização do Círculo Vazado */
+        .modal-cropper-container .react-easy-crop-container {
+          background-color: #000000 !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+        }
+        .modal-cropper-container .react-easy-crop-crop-area--round {
+          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.92) !important;
+          border: 1px solid rgba(255, 255, 255, 0.3) !important;
         }
       `}</style>
 
@@ -710,8 +727,8 @@ export default function Perfil() {
       )}
 
       {modalRecorte && (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
-          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
+        <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0 modal-cropper-container">
+          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 z-10 bg-black">
             <button onClick={fecharModalRecorte} className="text-ink p-1">
               <X size={22} />
             </button>
@@ -728,13 +745,14 @@ export default function Perfil() {
             </button>
           </div>
 
-          <div className="relative flex-1 bg-black">
+          <div className="relative flex-1 w-full min-h-[300px] bg-black">
             <Cropper
               image={modalRecorte.imagemSrc}
               crop={crop}
               zoom={zoom}
               aspect={modalRecorte.tipo === 'avatar' ? 1 : 3}
               cropShape={modalRecorte.tipo === 'avatar' ? 'round' : 'rect'}
+              cropSize={modalRecorte.tipo === 'avatar' ? { width: 280, height: 280 } : undefined}
               showGrid={modalRecorte.tipo !== 'avatar'}
               onCropChange={setCrop}
               onZoomChange={setZoom}
@@ -742,7 +760,7 @@ export default function Perfil() {
             />
           </div>
 
-          <div className="px-6 py-4 flex-shrink-0">
+          <div className="px-6 py-4 flex-shrink-0 z-10 bg-black">
             <input
               type="range"
               min={1}
