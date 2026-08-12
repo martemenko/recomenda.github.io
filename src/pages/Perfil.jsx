@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MoreVertical, Plus, ChevronRight, LayoutGrid, ArrowLeft, Camera, Loader2 } from 'lucide-react'
+import { MoreVertical, Plus, ChevronRight, LayoutGrid, ArrowLeft, Camera, Loader2, X, Check } from 'lucide-react'
+import Cropper from 'react-easy-crop'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { getCache, setCache, onCacheInvalidate } from '../lib/dataCache'
 import { formatarDuracao } from '../lib/format'
+import { getCroppedImg } from '../lib/cropImage'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
@@ -73,6 +75,14 @@ export default function Perfil() {
   const [enviandoCapa, setEnviandoCapa] = useState(false)
   const inputAvatarRef = useRef(null)
   const inputCapaRef = useRef(null)
+
+  // Modal de recorte (zoom/arrastar) exibido antes de enviar a foto escolhida.
+  // { tipo: 'avatar' | 'capa', imagemSrc: objectURL } | null
+  const [modalRecorte, setModalRecorte] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [areaRecortePixels, setAreaRecortePixels] = useState(null)
+  const [salvandoRecorte, setSalvandoRecorte] = useState(false)
 
   // Seção atualmente expandida em tela cheia (ou null se nenhuma) - guarda o
   // título do cabeçalho e a lista completa de itens (já carregada em memória,
@@ -343,34 +353,66 @@ export default function Perfil() {
     setListaAtualIndex(index)
   }
 
-  // Upload de foto de perfil ou capa. Usa um nome de arquivo FIXO por usuário
-  // (não o nome original) para que um novo upload sobrescreva o anterior no
-  // bucket, em vez de acumular arquivos órfãos.
-  async function enviarImagem(file, tipo) {
-    if (!file || !user) return
+  // Abre o modal de recorte ao escolher um arquivo (não envia direto).
+  function aoSelecionarArquivo(file, tipo) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('Selecione um arquivo de imagem válido.')
+      return
+    }
+    const TAMANHO_MAX_MB = 8
+    if (file.size > TAMANHO_MAX_MB * 1024 * 1024) {
+      alert(`A imagem precisa ter no máximo ${TAMANHO_MAX_MB}MB.`)
+      return
+    }
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setAreaRecortePixels(null)
+    setModalRecorte({ tipo, imagemSrc: URL.createObjectURL(file) })
+  }
+
+  const aoCompletarRecorte = useCallback((_areaRecorte, areaEmPixels) => {
+    setAreaRecortePixels(areaEmPixels)
+  }, [])
+
+  function fecharModalRecorte() {
+    if (modalRecorte) URL.revokeObjectURL(modalRecorte.imagemSrc)
+    setModalRecorte(null)
+  }
+
+  async function confirmarRecorte() {
+    if (!modalRecorte || !areaRecortePixels) return
+    setSalvandoRecorte(true)
+    try {
+      const blob = await getCroppedImg(modalRecorte.imagemSrc, areaRecortePixels)
+      await enviarImagem(blob, modalRecorte.tipo)
+      URL.revokeObjectURL(modalRecorte.imagemSrc)
+      setModalRecorte(null)
+    } catch (err) {
+      console.error('Erro ao recortar imagem:', err)
+      alert('Não foi possível recortar a imagem. Tenta de novo.')
+    } finally {
+      setSalvandoRecorte(false)
+    }
+  }
+
+  // Upload de foto de perfil ou capa. Recebe o Blob já recortado (sempre JPEG)
+  // e usa um nome de arquivo FIXO por usuário, pra sobrescrever o anterior no
+  // bucket em vez de acumular arquivos órfãos.
+  async function enviarImagem(blob, tipo) {
+    if (!blob || !user) return
     const isAvatar = tipo === 'avatar'
     const bucket = isAvatar ? 'avatars' : 'capas'
     const colunaDb = isAvatar ? 'foto_perfil' : 'foto_capa'
     const setEnviando = isAvatar ? setEnviandoAvatar : setEnviandoCapa
 
-    if (!file.type.startsWith('image/')) {
-      alert('Selecione um arquivo de imagem válido.')
-      return
-    }
-    const TAMANHO_MAX_MB = 5
-    if (file.size > TAMANHO_MAX_MB * 1024 * 1024) {
-      alert(`A imagem precisa ter no máximo ${TAMANHO_MAX_MB}MB.`)
-      return
-    }
-
     setEnviando(true)
     try {
-      const extensao = file.name.split('.').pop() || 'jpg'
-      const path = `${user.id}/foto.${extensao}`
+      const path = `${user.id}/foto.jpg`
 
       const { error: erroUpload } = await supabase.storage
         .from(bucket)
-        .upload(path, file, { upsert: true, cacheControl: '3600' })
+        .upload(path, blob, { upsert: true, cacheControl: '3600', contentType: 'image/jpeg' })
       if (erroUpload) throw erroUpload
 
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
@@ -445,7 +487,10 @@ export default function Perfil() {
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={(e) => enviarImagem(e.target.files?.[0], 'capa')}
+              onChange={(e) => {
+                aoSelecionarArquivo(e.target.files?.[0], 'capa')
+                e.target.value = ''
+              }}
             />
             <button
               onClick={() => inputCapaRef.current?.click()}
@@ -477,7 +522,10 @@ export default function Perfil() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => enviarImagem(e.target.files?.[0], 'avatar')}
+                onChange={(e) => {
+                  aoSelecionarArquivo(e.target.files?.[0], 'avatar')
+                  e.target.value = ''
+                }}
               />
               <button
                 onClick={() => inputAvatarRef.current?.click()}
@@ -686,6 +734,53 @@ export default function Perfil() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {modalRecorte && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
+            <button onClick={fecharModalRecorte} className="text-ink p-1">
+              <X size={22} />
+            </button>
+            <div className="text-sm text-ink font-display font-semibold">
+              {modalRecorte.tipo === 'avatar' ? 'Recortar foto de perfil' : 'Recortar capa'}
+            </div>
+            <button
+              onClick={confirmarRecorte}
+              disabled={salvandoRecorte || !areaRecortePixels}
+              className="text-amber p-1 disabled:opacity-40"
+              aria-label="Confirmar recorte"
+            >
+              {salvandoRecorte ? <Loader2 size={20} className="animate-spin" /> : <Check size={22} />}
+            </button>
+          </div>
+
+          <div className="relative flex-1 bg-black">
+            <Cropper
+              image={modalRecorte.imagemSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={modalRecorte.tipo === 'avatar' ? 1 : 3}
+              cropShape={modalRecorte.tipo === 'avatar' ? 'round' : 'rect'}
+              showGrid={modalRecorte.tipo !== 'avatar'}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={aoCompletarRecorte}
+            />
+          </div>
+
+          <div className="px-6 py-4 flex-shrink-0">
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.01}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full accent-amber"
+              aria-label="Zoom"
+            />
           </div>
         </div>
       )}
