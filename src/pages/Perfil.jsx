@@ -11,6 +11,37 @@ import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
 
+// Desenha um fundo escuro com um furo circular de 280px centralizado (compatível 100% com WebKit / Safari)
+function MascaraCircular() {
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none z-10"
+      style={{ overflow: 'hidden' }}
+    >
+      <defs>
+        <mask id="hole">
+          <rect width="100%" height="100%" fill="white" />
+          <circle cx="50%" cy="50%" r="140" fill="black" />
+        </mask>
+      </defs>
+      <rect
+        width="100%"
+        height="100%"
+        fill="rgba(0,0,0,0.85)"
+        mask="url(#hole)"
+      />
+      <circle
+        cx="50%"
+        cy="50%"
+        r="140"
+        stroke="rgba(255,255,255,0.4)"
+        strokeWidth="1.5"
+        fill="none"
+      />
+    </svg>
+  )
+}
+
 // O Supabase/PostgREST tem um limite padrão de "max rows" por requisição
 // (normalmente 1000), que corta a resposta mesmo se você pedir um .range()
 // maior. Pra buscar tudo de verdade, pagina em lotes com ordenação determinística
@@ -332,7 +363,7 @@ export default function Perfil() {
     setListaAtualIndex(index)
   }
 
-  // Leitura com FileReader resolve a falha de renderização no Safari/iOS
+  // Leitura com FileReader para total compatibilidade com Safari/iOS
   function aoSelecionarArquivo(file, tipo) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -443,7 +474,7 @@ export default function Perfil() {
           margin-bottom: 0 !important;
           padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
         }
-        /* Ajustes do Modal Cropper para Safari e Estilização do Círculo Vazado */
+        /* Ajuste do container para garantir posição e fundo no Safari / iOS */
         .modal-cropper-container .react-easy-crop-container {
           background-color: #000000 !important;
           position: absolute !important;
@@ -451,10 +482,6 @@ export default function Perfil() {
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
-        }
-        .modal-cropper-container .react-easy-crop-crop-area--round {
-          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.92) !important;
-          border: 1px solid rgba(255, 255, 255, 0.3) !important;
         }
       `}</style>
 
@@ -728,7 +755,7 @@ export default function Perfil() {
 
       {modalRecorte && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0 modal-cropper-container">
-          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 z-10 bg-black">
+          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 z-20 bg-black">
             <button onClick={fecharModalRecorte} className="text-ink p-1">
               <X size={22} />
             </button>
@@ -757,10 +784,11 @@ export default function Perfil() {
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={aoCompletarRecorte}
+              overlayComponent={modalRecorte.tipo === 'avatar' ? <MascaraCircular /> : undefined}
             />
           </div>
 
-          <div className="px-6 py-4 flex-shrink-0 z-10 bg-black">
+          <div className="px-6 py-4 flex-shrink-0 z-20 bg-black">
             <input
               type="range"
               min={1}
