@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock, RotateCcw } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
+import { registrarAssistido, contarAssistidosPorEpisodio } from '../lib/watchLog'
 import SectionLabel from '../components/SectionLabel'
+import ActionSheet from '../components/ActionSheet'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w500'
 
@@ -33,6 +35,8 @@ export default function EpisodioDetalhe() {
   const [expandirSinopse, setExpandirSinopse] = useState(false)
   const [proximoEpisodio, setProximoEpisodio] = useState(null)
   const [episodioAnterior, setEpisodioAnterior] = useState(null)
+  const [vezesAssistido, setVezesAssistido] = useState(0)
+  const [sheetAssistidoAberto, setSheetAssistidoAberto] = useState(false)
 
   useEffect(() => {
     carregarDados()
@@ -75,6 +79,10 @@ export default function EpisodioDetalhe() {
           .maybeSingle()
 
         setAssistido(!!watchedData)
+
+        // 3.1 Buscar quantas vezes o usuário já assistiu este episódio (histórico de reassistidas)
+        const contagem = await contarAssistidosPorEpisodio(user.id, [Number(id)])
+        setVezesAssistido(contagem.get(Number(id)) ?? 0)
 
         // 4. Buscar nota dada pelo usuário para o episódio
         const { data: ratingData } = await supabase
@@ -128,33 +136,61 @@ export default function EpisodioDetalhe() {
     }
   }
 
-  async function alternarAssistido() {
+  function alternarAssistido() {
     if (!user || !episodio) return
-    const novoStatus = !assistido
-    setAssistido(novoStatus)
+    if (assistido) {
+      // Já assistido: abre o menu de reassistir/não visto em vez de desmarcar direto
+      setSheetAssistidoAberto(true)
+      return
+    }
+    marcarAssistido()
+  }
+
+  async function marcarAssistido() {
+    setAssistido(true)
+    setVezesAssistido((v) => v + 1)
     invalidateCache(['series', 'perfil'])
 
     const isRealUser = user && user.id && user.id !== 'demo-user-id'
     try {
       if (isRealUser) {
-        if (novoStatus) {
-          await supabase.from('watched_episode').upsert({
-            user_id: user.id,
-            episode_id: Number(id),
-            watched_at: new Date().toISOString()
-          })
-        } else {
-          await supabase
-            .from('watched_episode')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('episode_id', Number(id))
-        }
+        await supabase.from('watched_episode').upsert({
+          user_id: user.id,
+          episode_id: Number(id),
+          watched_at: new Date().toISOString()
+        })
+        await registrarAssistido({ userId: user.id, episodeIds: [Number(id)] })
       }
     } catch (err) {
-      console.error('Erro ao alternar assistido:', err)
-      setAssistido(!novoStatus)
+      console.error('Erro ao marcar assistido:', err)
+      setAssistido(false)
+      setVezesAssistido((v) => Math.max(0, v - 1))
     }
+  }
+
+  async function marcarNaoVisto() {
+    setAssistido(false)
+    setSheetAssistidoAberto(false)
+    invalidateCache(['series', 'perfil'])
+
+    const isRealUser = user && user.id && user.id !== 'demo-user-id'
+    try {
+      if (isRealUser) {
+        await supabase
+          .from('watched_episode')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('episode_id', Number(id))
+      }
+    } catch (err) {
+      console.error('Erro ao marcar como não visto:', err)
+      setAssistido(true)
+    }
+  }
+
+  function confirmarReassistir() {
+    setSheetAssistidoAberto(false)
+    marcarAssistido()
   }
 
   async function avaliarEpisodio(nota) {
@@ -359,7 +395,7 @@ export default function EpisodioDetalhe() {
           {assistido ? (
             <>
               <Check size={18} strokeWidth={2.5} />
-              <span>Episódio assistido</span>
+              <span>Episódio assistido{vezesAssistido > 1 ? ` · ${vezesAssistido}x` : ''}</span>
             </>
           ) : (
             <>
@@ -466,6 +502,16 @@ export default function EpisodioDetalhe() {
           </div>
         )}
       </div>
+
+      <ActionSheet
+        open={sheetAssistidoAberto}
+        title="Episódio assistido"
+        onClose={() => setSheetAssistidoAberto(false)}
+        options={[
+          { label: 'Marcar como reassistido', tone: 'primary', icon: <RotateCcw size={16} />, onClick: confirmarReassistir },
+          { label: 'Marcar como não visto', tone: 'danger', onClick: marcarNaoVisto },
+        ]}
+      />
     </div>
   )
 }

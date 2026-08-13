@@ -63,6 +63,29 @@ def mapa_tmdb_para_titulo(tabela_filha):
     return mapa
 
 
+def atualizar_provedores(titulo_id, media_type, tmdb_id, tabela_filha):
+    """Re-busca onde assistir (TMDB/JustWatch, região BR) e atualiza titulo_provedor +
+    o link único de atribuição em series/movies.watch_providers_link."""
+    dados = tmdb_get(f"/{media_type}/{tmdb_id}/watch/providers")
+    regiao = dados.get("results", {}).get("BR", {})
+
+    linhas = [
+        {
+            "titulo_id": titulo_id,
+            "tipo": tipo,
+            "provider_name": p["provider_name"],
+            "logo_path": p.get("logo_path"),
+            "display_priority": p.get("display_priority"),
+        }
+        for tipo in ("flatrate", "rent", "buy")
+        for p in regiao.get(tipo, [])
+    ]
+    if linhas:
+        supabase.table("titulo_provedor").upsert(linhas, on_conflict="titulo_id,tipo,provider_name").execute()
+
+    supabase.table(tabela_filha).update({"watch_providers_link": regiao.get("link")}).eq("titulo_id", titulo_id).execute()
+
+
 def atualizar_serie(tmdb_id, titulo_id):
     detalhes = tmdb_get(f"/tv/{tmdb_id}", {"language": "pt-BR"})
 
@@ -81,6 +104,8 @@ def atualizar_serie(tmdb_id, titulo_id):
         "end_date": detalhes.get("last_air_date"),
         "temporadas": detalhes.get("number_of_seasons"),
     }).execute()
+
+    atualizar_provedores(titulo_id, "tv", tmdb_id, "series")
 
     # Re-busca episódios de cada temporada (pega episódios novos automaticamente)
     for temporada in detalhes.get("seasons", []):
@@ -120,6 +145,8 @@ def atualizar_filme(tmdb_id, titulo_id):
         "duration": detalhes.get("runtime"),
         "launch_date": detalhes.get("release_date"),
     }).execute()
+
+    atualizar_provedores(titulo_id, "movie", tmdb_id, "movies")
 
     print(f"  - filme atualizado: {detalhes.get('title')} ({tmdb_id})")
 

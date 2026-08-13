@@ -64,11 +64,18 @@ serve(async (req) => {
     let tituloId: number | undefined = existente?.id;
 
     if (!existente || forceUpdate) {
-      // Carrega os detalhes do título e os créditos/elenco em paralelo
-      const [detalhes, credits] = await Promise.all([
+      // Carrega os detalhes do título, os créditos/elenco e onde assistir (streaming) em paralelo
+      const [detalhes, credits, providers] = await Promise.all([
         tmdbGet(`/${media_type}/${tmdb_id}?language=pt-BR`),
-        tmdbGet(`/${media_type}/${tmdb_id}/credits?language=pt-BR`)
+        tmdbGet(`/${media_type}/${tmdb_id}/credits?language=pt-BR`),
+        tmdbGet(`/${media_type}/${tmdb_id}/watch/providers`).catch(() => null),
       ]);
+
+      // Onde assistir (TMDB/JustWatch) — região fixada em BR, já que o app é 100% PT-BR.
+      // ToS da JustWatch não permite link individual por provedor, só um link combinado
+      // de atribuição por título+região (results.BR.link).
+      const regiaoProvedores = providers?.results?.BR;
+      const watchProvidersLink = regiaoProvedores?.link ?? null;
 
       const { data: tituloRow, error: tituloErr } = await db
         .from("titulo")
@@ -88,12 +95,28 @@ serve(async (req) => {
       if (tituloErr) throw tituloErr;
       tituloId = tituloRow.id;
 
+      // Upsert dos provedores de streaming (logos/nomes) — o link único de atribuição
+      // fica na coluna watch_providers_link de series/movies, gravado abaixo.
+      const linhasProvedores = ["flatrate", "rent", "buy"].flatMap((tipo) =>
+        (regiaoProvedores?.[tipo] ?? []).map((p: any) => ({
+          titulo_id: tituloId,
+          tipo,
+          provider_name: p.provider_name,
+          logo_path: p.logo_path,
+          display_priority: p.display_priority ?? null,
+        })),
+      );
+      if (linhasProvedores.length) {
+        await db.from("titulo_provedor").upsert(linhasProvedores, { onConflict: "titulo_id,tipo,provider_name" });
+      }
+
       if (media_type === "tv") {
         await db.from("series").upsert({
           titulo_id: tituloId,
           launch_date: detalhes.first_air_date || null,
           end_date: detalhes.last_air_date || null,
           temporadas: detalhes.number_of_seasons,
+          watch_providers_link: watchProvidersLink,
         });
 
         // Otimização de concorrência: Dispara todas as requisições de temporadas em paralelo para máxima velocidade
@@ -137,6 +160,7 @@ serve(async (req) => {
           titulo_id: tituloId,
           duration: detalhes.runtime,
           launch_date: detalhes.release_date || null,
+          watch_providers_link: watchProvidersLink,
         });
 
         for (const membro of (credits.cast ?? []).slice(0, 15)) {
