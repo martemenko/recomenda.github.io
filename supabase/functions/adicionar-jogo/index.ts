@@ -55,7 +55,7 @@ serve(async (req) => {
     if (!existente || forceUpdate) {
       const [jogo] = await igdbQuery(
         "games",
-        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url; where id = ${Number(igdb_id)};`,
+        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url,external_games.category,external_games.url; where id = ${Number(igdb_id)};`,
       );
 
       if (!jogo) {
@@ -99,23 +99,42 @@ serve(async (req) => {
         developer,
       });
 
-      // Onde jogar/comprar: só os sites da IGDB que são lojas de fato (as demais
-      // categorias são rede social/wiki/etc, sem valor pra essa seção). IGDB não dá
-      // logo pra loja (diferente da TMDB), por isso só nome + link direto.
-      const lojasPorCategoria: Record<number, string> = {
+      // Onde jogar/comprar: IGDB não tem "watch/providers" como a TMDB, então junta duas
+      // fontes — "websites" (raramente tem loja, mas às vezes é a única com o link) e
+      // "external_games" (cobre bem mais lojas, incluindo consoles). IGDB não dá logo
+      // pra loja (diferente da TMDB), por isso só nome + link direto.
+      const lojasPorWebsite: Record<number, string> = {
         13: "Steam",
         15: "itch.io",
         16: "Epic Games Store",
         17: "GOG",
       };
-      const linhasLojas = (jogo.websites ?? [])
-        .filter((w: any) => lojasPorCategoria[w.category])
-        .map((w: any) => ({
-          titulo_id: tituloId,
-          tipo: "loja",
-          provider_name: lojasPorCategoria[w.category],
-          url: w.url,
-        }));
+      const lojasPorExternalGame: Record<number, string> = {
+        1: "Steam",
+        5: "GOG",
+        11: "Microsoft Store",
+        24: "Epic Games Store",
+        27: "itch.io",
+        28: "Xbox",
+        30: "PlayStation Store",
+      };
+
+      const candidatosLoja = [
+        ...(jogo.websites ?? []).map((w: any) => ({ nome: lojasPorWebsite[w.category], url: w.url })),
+        ...(jogo.external_games ?? []).map((e: any) => ({ nome: lojasPorExternalGame[e.category], url: e.url })),
+      ].filter((c) => c.nome && c.url);
+
+      // Dedup por nome de loja (o mesmo storefront pode aparecer nas duas fontes acima) —
+      // upsert não aceita duas linhas com o mesmo conflict target na mesma chamada.
+      const urlPorLoja = new Map<string, string>();
+      for (const c of candidatosLoja) urlPorLoja.set(c.nome, c.url);
+
+      const linhasLojas = Array.from(urlPorLoja, ([provider_name, url]) => ({
+        titulo_id: tituloId,
+        tipo: "loja",
+        provider_name,
+        url,
+      }));
       if (linhasLojas.length) {
         await db.from("titulo_provedor").upsert(linhasLojas, { onConflict: "titulo_id,tipo,provider_name" });
       }
