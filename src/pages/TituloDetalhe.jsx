@@ -1,12 +1,16 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock } from 'lucide-react'
+import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock, RotateCcw } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
+import { registrarAssistido, contarAssistidosPorTitulo } from '../lib/watchLog'
 import SectionLabel from '../components/SectionLabel'
+import SubTabs from '../components/SubTabs'
+import ActionSheet from '../components/ActionSheet'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
+const PROVIDER_LOGO_BASE = 'https://image.tmdb.org/t/p/w92'
 
 // Imagens da TMDB vêm como path relativo (precisa prefixar POSTER_BASE); imagens
 // da IGDB (jogos) já vêm como URL absoluta — usar direto.
@@ -57,9 +61,15 @@ export default function TituloDetalhe() {
   const [minhaNota, setMinhaNota] = useState(0)
   const [episodios, setEpisodios] = useState([])
   const [assistidos, setAssistidos] = useState(new Set())
+  const [contagemEpisodios, setContagemEpisodios] = useState(new Map())
+  const [contagemTitulo, setContagemTitulo] = useState(0)
+  const [provedores, setProvedores] = useState([])
+  const [linkProvedores, setLinkProvedores] = useState(null)
   const [temporadaAberta, setTemporadaAberta] = useState(null)
   const [confirmacao, setConfirmacao] = useState(null)
   const [menuStatusAberto, setMenuStatusAberto] = useState(false)
+  const [sheetAssistido, setSheetAssistido] = useState(null) // { episodeIds } | { tituloIdAlvo: true } | null
+  const [abaAtiva, setAbaAtiva] = useState('sobre')
 
   // Obtém a data local de hoje em formato YYYY-MM-DD absoluto e seguro contra fuso horário
   const hojeLocal = new Date()
@@ -74,8 +84,8 @@ export default function TituloDetalhe() {
 
   async function carregar() {
     const idioma = idiomaAtual(perfil)
-    
-    let tipoUrl = searchParams.get('tipo') 
+
+    let tipoUrl = searchParams.get('tipo')
 
     // Fallback manual extremamente robusto para HashRouter no GitHub Pages
     if (!tipoUrl) {
@@ -149,10 +159,36 @@ export default function TituloDetalhe() {
       return list
     }
 
+    // Histórico de reassistidas (watch_log) desta série — paginado pelo mesmo motivo acima.
+    const obterHistoricoEpisodiosPaginado = async () => {
+      if (!user || tipo !== 'tv') return []
+      let list = []
+      let de = 0
+      const tamanho = 1000
+      while (true) {
+        const { data, error } = await supabase
+          .from('watch_log')
+          .select('episode_id, episode!inner(titulo_id)')
+          .eq('user_id', user.id)
+          .eq('episode.titulo_id', id)
+          .range(de, de + tamanho - 1)
+
+        if (error) {
+          console.error('Erro ao buscar histórico de episódios (paginado):', error)
+          break
+        }
+        if (!data || data.length === 0) break
+        list = [...list, ...data]
+        if (data.length < tamanho) break
+        de += tamanho
+      }
+      return list
+    }
+
     // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo.
     // Tradução só existe pra fonte TMDB (tv/movie) — pular pra jogo evita um round-trip
     // que nunca acha nada (IGDB não passa por esse fluxo de tradução).
-    const [traduzido, base, cast, eps, watched, item, rating] = await Promise.all([
+    const [traduzido, base, cast, eps, watched, item, rating, historicoEpisodios, contagemTituloVal, provedoresList, linkProv] = await Promise.all([
       tipo === 'game'
         ? Promise.resolve(null)
         : callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
@@ -165,23 +201,40 @@ export default function TituloDetalhe() {
       obterEpisodiosPaginados(),
       obterAssistidosPaginados(),
       user ? supabase.from('user_item').select('status, favorito').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
-      user ? supabase.from('user_rating').select('rating_score').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null
+      user ? supabase.from('user_rating').select('rating_score').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
+      obterHistoricoEpisodiosPaginado(),
+      tipo !== 'tv' && user ? contarAssistidosPorTitulo(user.id, Number(id)) : Promise.resolve(0),
+      supabase.from('titulo_provedor').select('*').eq('titulo_id', id).order('display_priority', { ascending: true }).then(res => res.data ?? []),
+      tipo === 'tv'
+        ? supabase.from('series').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
+        : tipo === 'movie'
+        ? supabase.from('movies').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
+        : Promise.resolve(null),
     ])
+
+    const mapaContagem = new Map()
+    for (const row of historicoEpisodios) {
+      mapaContagem.set(row.episode_id, (mapaContagem.get(row.episode_id) ?? 0) + 1)
+    }
 
     setTitulo({ ...base, ...(traduzido ?? {}) })
     setElenco(cast)
     setEpisodios(eps)
     setAssistidos(new Set((watched ?? []).map((w) => w.episode_id)))
+    setContagemEpisodios(mapaContagem)
+    setContagemTitulo(contagemTituloVal ?? 0)
+    setProvedores(provedoresList)
+    setLinkProvedores(linkProv)
     setUserItem(item)
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
 
     // Sincronização em Background Reativa silenciosa (reaproveita "base" — se veio
     // preenchido, o título já existia antes desta carga, sem precisar de outra query)
     if (base && tipo === 'tv' && user) {
-      callFunction('adicionar-titulo', { 
-        tmdb_id: Number(id), 
-        media_type: 'tv', 
-        status: 'none' 
+      callFunction('adicionar-titulo', {
+        tmdb_id: Number(id),
+        media_type: 'tv',
+        status: 'none'
       })
       .then(async () => {
         const novosEps = await obterEpisodiosPaginados()
@@ -219,7 +272,7 @@ export default function TituloDetalhe() {
   async function mudarStatus(novoStatus) {
     setMenuStatusAberto(false)
     invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
-    
+
     // Atualização Visual Instantânea
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
 
@@ -229,7 +282,7 @@ export default function TituloDetalhe() {
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
-    
+
     if (error) {
       console.error('Erro ao mudar status:', error)
       carregar() // Reverte estado se falhar
@@ -239,7 +292,7 @@ export default function TituloDetalhe() {
   async function deixarDeSeguir() {
     setMenuStatusAberto(false)
     invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
-    
+
     // Atualização Visual Instantânea (Desmarca de imediato na interface)
     const estadoAntes = userItem
     setUserItem(null)
@@ -249,7 +302,7 @@ export default function TituloDetalhe() {
       .delete()
       .eq('user_id', user.id)
       .eq('titulo_id', Number(id))
-    
+
     if (error) {
       console.error('Erro ao deixar de seguir:', error)
       setUserItem(estadoAntes) // Reverte se falhar
@@ -260,7 +313,7 @@ export default function TituloDetalhe() {
   async function favoritar() {
     const novoFav = !userItem?.favorito
     invalidateCache(['series', 'perfil', 'filmes', 'jogos'])
-    
+
     // Atualização Visual Instantânea (Troca o preenchimento do coração na hora)
     setUserItem(prev => prev ? { ...prev, favorito: novoFav } : { status: 'quero_ver', favorito: novoFav })
 
@@ -314,19 +367,30 @@ export default function TituloDetalhe() {
       if (desmarcar) novasMarcadas.delete(eid)
       else novasMarcadas.add(eid)
     })
-    
+
     const totalAssistidos = novasMarcadas.size
     const novoStatus = totalAssistidos === 0 ? 'quero_ver' : totalAssistidos >= episodios.length ? 'visto' : 'vendo'
-    
+
     setAssistidos(novasMarcadas)
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
+
+    // Toda marcação (primeira vez ou reassistir) soma no histórico — nunca some ao desmarcar
+    if (!desmarcar) {
+      setContagemEpisodios(prev => {
+        const novo = new Map(prev)
+        episodeIds.forEach(eid => novo.set(eid, (novo.get(eid) ?? 0) + 1))
+        return novo
+      })
+    }
 
     // 2. Processa a sincronização com o banco em segundo plano de forma silenciosa
     try {
       const { error } = desmarcar
         ? await supabase.from('watched_episode').delete().eq('user_id', user.id).in('episode_id', episodeIds)
-        : await supabase.from('watched_episode').upsert(episodeIds.map((eid) => ({ user_id: user.id, episode_id: eid })))
-      
+        : await supabase.from('watched_episode').upsert(
+            episodeIds.map((eid) => ({ user_id: user.id, episode_id: eid, watched_at: new Date().toISOString() }))
+          )
+
       if (error) throw error
 
       const { error: erroStatus } = await supabase.from('user_item').upsert({
@@ -336,6 +400,10 @@ export default function TituloDetalhe() {
         favorito: userItem?.favorito ?? false,
       })
       if (erroStatus) throw erroStatus
+
+      if (!desmarcar) {
+        await registrarAssistido({ userId: user.id, episodeIds })
+      }
     } catch (err) {
       console.error('[Importador] Erro na gravação:', err)
       carregar() // Se der erro, puxa os dados corretos do banco de volta
@@ -344,7 +412,8 @@ export default function TituloDetalhe() {
 
   async function marcarEpisodio(episodeObj, marcado) {
     if (marcado) {
-      await aplicarMarcacao([episodeObj.id], true)
+      // Já assistido: abre o menu de reassistir/não visto em vez de desmarcar direto
+      setSheetAssistido({ episodeIds: [episodeObj.id] })
       return
     }
     const anteriores = episodiosAntesDe(episodeObj)
@@ -362,7 +431,8 @@ export default function TituloDetalhe() {
   async function marcarTemporada(seasonNumber, todasAssistidas) {
     const epsDaTemporada = episodios.filter((e) => e.season_number === seasonNumber)
     if (todasAssistidas) {
-      await aplicarMarcacao(epsDaTemporada.map((e) => e.id), true)
+      // Temporada inteira já assistida: abre o menu de reassistir/não visto em vez de desmarcar direto
+      setSheetAssistido({ episodeIds: epsDaTemporada.map((e) => e.id) })
       return
     }
 
@@ -381,11 +451,25 @@ export default function TituloDetalhe() {
     }
   }
 
-  async function marcarFilmeVisto() {
-    const novoStatus = userItem?.status === 'visto' ? 'quero_ver' : 'visto'
-    
-    // Atualização Visual Instantânea
+  // Marca (ou abre o menu de reassistir, se já estiver tudo visto) todos os episódios
+  // já lançados da série de uma vez — botão novo no topo da aba Episódios.
+  function marcarTudoComoVisto() {
+    if (todosEpisodiosAssistidos) {
+      setSheetAssistido({ episodeIds: episodiosLancados.map((e) => e.id) })
+      return
+    }
+    const faltantes = episodiosLancados.filter((e) => !assistidos.has(e.id))
+    if (faltantes.length > 0) {
+      aplicarMarcacao(faltantes.map((e) => e.id), false)
+    }
+  }
+
+  // Marca/desmarca (ou reassiste) o filme/jogo — status fica só em user_item, sem episódios envolvidos
+  async function alternarStatusFilmeOuJogo(desmarcar) {
+    const novoStatus = desmarcar ? 'quero_ver' : 'visto'
+
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
+    if (!desmarcar) setContagemTitulo((c) => c + 1)
 
     const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
@@ -393,11 +477,39 @@ export default function TituloDetalhe() {
       status: novoStatus,
       favorito: userItem?.favorito ?? false,
     })
-    
+
     if (error) {
-      console.error('Erro ao marcar filme visto:', error)
+      console.error('Erro ao marcar filme/jogo:', error)
       carregar() // Reverte se falhar
+      return
     }
+
+    if (!desmarcar) {
+      await registrarAssistido({ userId: user.id, tituloId: Number(id) })
+    }
+  }
+
+  function marcarFilmeVisto() {
+    if (userItem?.status === 'visto') {
+      // Já assistido/jogado: abre o menu de reassistir/não visto em vez de desmarcar direto
+      setSheetAssistido({ tituloIdAlvo: true })
+      return
+    }
+    alternarStatusFilmeOuJogo(false)
+  }
+
+  function confirmarReassistir() {
+    if (!sheetAssistido) return
+    if (sheetAssistido.episodeIds) aplicarMarcacao(sheetAssistido.episodeIds, false)
+    else alternarStatusFilmeOuJogo(false)
+    setSheetAssistido(null)
+  }
+
+  function confirmarNaoVisto() {
+    if (!sheetAssistido) return
+    if (sheetAssistido.episodeIds) aplicarMarcacao(sheetAssistido.episodeIds, true)
+    else alternarStatusFilmeOuJogo(true)
+    setSheetAssistido(null)
   }
 
   function handleVoltar() {
@@ -415,7 +527,19 @@ export default function TituloDetalhe() {
     return [...new Set(episodios.map((e) => e.season_number))].sort((a, b) => a - b)
   }, [episodios])
 
+  const episodiosLancados = useMemo(
+    () => episodios.filter((e) => e.launch_date && e.launch_date <= hojeString),
+    [episodios, hojeString],
+  )
+  const todosEpisodiosAssistidos = episodiosLancados.length > 0 && episodiosLancados.every((e) => assistidos.has(e.id))
+
   if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
+
+  const rotuloReassistir = mediaType === 'game' ? 'Marcar como rejogado' : 'Marcar como reassistido'
+  const rotuloNaoVisto = mediaType === 'game' ? 'Marcar como não jogado' : 'Marcar como não visto'
+  const rotuloSheetTitulo = sheetAssistido?.episodeIds
+    ? sheetAssistido.episodeIds.length > 1 ? 'Vários episódios assistidos' : 'Episódio assistido'
+    : mediaType === 'game' ? 'Já jogado' : 'Já assistido'
 
   return (
     <div className="flex-1 overflow-y-auto scroll-area relative">
@@ -487,79 +611,180 @@ export default function TituloDetalhe() {
           )}
         </div>
 
-        {/* Seção de Avaliação (Sua Nota 1 a 10) com Estrelas e Número Embaixo */}
-        <div className="bg-surface/70 border border-white/5 rounded-2xl p-4 pt-3 mt-4">
-          <div className="flex items-center justify-between mb-2">
-            <SectionLabel className="!px-0 !pt-0">Sua nota</SectionLabel>
-            {minhaNota > 0 && (
-              <span className="text-xs font-display font-bold text-amber">
-                Sua nota: {minhaNota}/10
-              </span>
+        {(mediaType === 'movie' || mediaType === 'game') && userItem?.status === 'visto' && contagemTitulo > 1 && (
+          <div className="text-[11px] text-teal font-display font-medium mt-1.5 text-right">
+            {mediaType === 'game' ? 'Jogado' : 'Assistido'} · {contagemTitulo}x
+          </div>
+        )}
+      </div>
+
+      {mediaType === 'tv' && (
+        <SubTabs
+          tabs={[
+            { value: 'sobre', label: 'Sobre' },
+            { value: 'episodios', label: 'Episódios' },
+          ]}
+          active={abaAtiva}
+          onChange={setAbaAtiva}
+        />
+      )}
+
+      {(mediaType !== 'tv' || abaAtiva === 'sobre') && (
+        <>
+          {/* Seção de Avaliação (Sua Nota 1 a 10) com Estrelas e Número Embaixo */}
+          <div className="px-4">
+            <div className="bg-surface/70 border border-white/5 rounded-2xl p-4 pt-3 mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <SectionLabel className="!px-0 !pt-0">Sua nota</SectionLabel>
+                {minhaNota > 0 && (
+                  <span className="text-xs font-display font-bold text-amber">
+                    Sua nota: {minhaNota}/10
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-10 gap-1 pt-1">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                  const selecionada = num <= minhaNota
+                  return (
+                    <button
+                      key={num}
+                      onClick={() => avaliar(num)}
+                      aria-label={`Nota ${num}`}
+                      className={`flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-150 border cursor-pointer active:scale-95 ${
+                        selecionada
+                          ? 'bg-amber/15 border-amber/40 shadow-[0_0_10px_rgba(243,194,85,0.25)]'
+                          : 'bg-surface2/40 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      <Star
+                        size={16}
+                        fill={selecionada ? '#f3c255' : 'none'}
+                        className={selecionada ? 'text-amber' : 'text-muted/40'}
+                      />
+                      <span
+                        className={`text-[11px] font-display font-bold mt-1 ${
+                          selecionada ? 'text-amber' : 'text-muted'
+                        }`}
+                      >
+                        {num}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {mediaType === 'tv' && episodios.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs text-muted font-sans mb-1.5">
+                  {assistidos.size}/{episodios.length} episódios assistidos
+                </div>
+                <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber h-full transition-all duration-300 rounded-full"
+                    style={{ width: `${Math.round((assistidos.size / episodios.length) * 100)}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-10 gap-1 pt-1">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
-              const selecionada = num <= minhaNota
-              return (
-                <button
-                  key={num}
-                  onClick={() => avaliar(num)}
-                  aria-label={`Nota ${num}`}
-                  className={`flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-150 border cursor-pointer active:scale-95 ${
-                    selecionada
-                      ? 'bg-amber/15 border-amber/40 shadow-[0_0_10px_rgba(243,194,85,0.25)]'
-                      : 'bg-surface2/40 border-white/5 hover:border-white/20'
-                  }`}
-                >
-                  <Star
-                    size={16}
-                    fill={selecionada ? '#f3c255' : 'none'}
-                    className={selecionada ? 'text-amber' : 'text-muted/40'}
-                  />
-                  <span
-                    className={`text-[11px] font-display font-bold mt-1 ${
-                      selecionada ? 'text-amber' : 'text-muted'
-                    }`}
-                  >
-                    {num}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {elenco.length > 0 && (
-        <>
-          <SectionLabel>Elenco</SectionLabel>
-          <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
-            {elenco.map((c, i) => (
-              <div key={i} className="flex-shrink-0 w-16 text-center">
-                <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden border border-white/5">
-                  {c.ator?.image && (
-                    <img
-                      src={`https://image.tmdb.org/t/p/w185${c.ator.image}`}
-                      alt={c.ator?.name || 'Ator'}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                </div>
-                <div className="text-[10px] text-ink mt-1 truncate font-medium">{c.ator?.name}</div>
-                <div className="text-[9px] text-muted truncate">{c.personagem}</div>
+          {elenco.length > 0 && (
+            <>
+              <SectionLabel>Elenco</SectionLabel>
+              <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
+                {elenco.map((c, i) => (
+                  <div key={i} className="flex-shrink-0 w-16 text-center">
+                    <div className="w-16 h-16 rounded-full bg-surface2 overflow-hidden border border-white/5">
+                      {c.ator?.image && (
+                        <img
+                          src={`https://image.tmdb.org/t/p/w185${c.ator.image}`}
+                          alt={c.ator?.name || 'Ator'}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="text-[10px] text-ink mt-1 truncate font-medium">{c.ator?.name}</div>
+                    <div className="text-[9px] text-muted truncate">{c.personagem}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+
+          {(mediaType === 'tv' || mediaType === 'movie') && provedores.length > 0 && (
+            <>
+              <SectionLabel>Onde assistir</SectionLabel>
+              <div className="flex gap-3 px-4 pb-4 overflow-x-auto scroll-area">
+                {provedores.map((p) => (
+                  <a
+                    key={`${p.tipo}-${p.provider_name}`}
+                    href={linkProvedores || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-shrink-0 w-14 text-center"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-surface2 overflow-hidden border border-white/5 flex items-center justify-center">
+                      {p.logo_path ? (
+                        <img
+                          src={`${PROVIDER_LOGO_BASE}${p.logo_path}`}
+                          alt={p.provider_name}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[9px] text-muted px-1 leading-tight">{p.provider_name}</span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+
+          {mediaType === 'game' && provedores.length > 0 && (
+            <>
+              <SectionLabel>Onde jogar/comprar</SectionLabel>
+              <div className="flex flex-wrap gap-2 px-4 pb-4">
+                {provedores.map((p) => (
+                  <a
+                    key={p.provider_name}
+                    href={p.url || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-2 rounded-xl bg-surface2 border border-white/5 text-xs font-display font-medium text-ink hover:border-white/20 transition-colors"
+                  >
+                    {p.provider_name}
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
-      {mediaType === 'tv' && (
+      {mediaType === 'tv' && abaAtiva === 'episodios' && (
         <>
           <SectionLabel>Episódios</SectionLabel>
           <div className="px-4 pb-12 flex flex-col gap-3">
+            {episodiosLancados.length > 0 && (
+              <button
+                onClick={marcarTudoComoVisto}
+                className={`w-full py-3 rounded-2xl font-display font-semibold text-sm flex items-center justify-center gap-2 border transition-all ${
+                  todosEpisodiosAssistidos
+                    ? 'bg-teal/15 text-teal border-teal/40'
+                    : 'bg-surface border-white/10 text-ink hover:border-white/25'
+                }`}
+              >
+                <Check size={16} strokeWidth={2.5} />
+                {todosEpisodiosAssistidos ? 'Tudo assistido' : 'Marcar tudo como visto'}
+              </button>
+            )}
+
             {temporadas.map((t) => {
               const epsDaTemporada = episodios.filter((e) => e.season_number === t)
               const lancadosDaTemporada = epsDaTemporada.filter((e) => e.launch_date && e.launch_date <= hojeString)
@@ -601,7 +826,7 @@ export default function TituloDetalhe() {
                       <button
                         onClick={() => marcarTemporada(t, todasAssistidas)}
                         aria-label="Marcar temporada como vista"
-                        title={todasAssistidas ? "Desmarcar temporada" : "Marcar toda a temporada como assistida"}
+                        title={todasAssistidas ? "Reassistir ou desmarcar temporada" : "Marcar toda a temporada como assistida"}
                         className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border transition-all ${
                           todasAssistidas
                             ? 'bg-teal border-teal text-bg shadow-[0_0_12px_rgba(221,13,244,0.45)]'
@@ -627,6 +852,7 @@ export default function TituloDetalhe() {
                       {epsDaTemporada.map((e) => {
                         const marcado = assistidos.has(e.id)
                         const lancado = e.launch_date && e.launch_date <= hojeString
+                        const vezesAssistido = contagemEpisodios.get(e.id) ?? 0
 
                         if (lancado) {
                           return (
@@ -675,7 +901,9 @@ export default function TituloDetalhe() {
                                 </div>
                                 <div className="text-xs text-muted font-sans mt-0.5 flex items-center gap-2">
                                   {marcado ? (
-                                    <span className="text-teal font-medium">Assistido</span>
+                                    <span className="text-teal font-medium">
+                                      Assistido{vezesAssistido > 1 ? ` · ${vezesAssistido}x` : ''}
+                                    </span>
                                   ) : (
                                     <span>Lançamento: {formatarDataExtensa(e.launch_date)}</span>
                                   )}
@@ -759,46 +987,32 @@ export default function TituloDetalhe() {
         </div>
       )}
 
-      {menuStatusAberto && (
-        <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={() => setMenuStatusAberto(false)}>
-          <div
-            className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-xs text-muted font-mono uppercase mb-3 px-1">Gerenciar série</div>
-            <div className="flex flex-col gap-2">
-              {userItem?.status === 'interrompida' ? (
-                <button
-                  onClick={() => mudarStatus('quero_ver')}
-                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
-                >
-                  <Check size={16} className="text-teal" /> Voltar a Seguir (Ativa)
-                </button>
-              ) : (
-                <button
-                  onClick={() => mudarStatus('interrompida')}
-                  className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-surface2 text-ink hover:bg-white/5"
-                >
-                  Interrompida
-                </button>
-              )}
+      <ActionSheet
+        open={menuStatusAberto}
+        title="Gerenciar série"
+        onClose={() => setMenuStatusAberto(false)}
+        options={
+          userItem?.status === 'interrompida'
+            ? [
+                { label: 'Voltar a Seguir (Ativa)', icon: <Check size={16} className="text-teal" />, onClick: () => mudarStatus('quero_ver') },
+                { label: 'Deixar de seguir', tone: 'danger', onClick: deixarDeSeguir },
+              ]
+            : [
+                { label: 'Interrompida', onClick: () => mudarStatus('interrompida') },
+                { label: 'Deixar de seguir', tone: 'danger', onClick: deixarDeSeguir },
+              ]
+        }
+      />
 
-              <button
-                onClick={deixarDeSeguir}
-                className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-display font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20"
-              >
-                Deixar de seguir
-              </button>
-            </div>
-            <button
-              onClick={() => setMenuStatusAberto(false)}
-              className="w-full mt-2 py-2.5 text-sm text-muted font-display font-medium"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+      <ActionSheet
+        open={!!sheetAssistido}
+        title={rotuloSheetTitulo}
+        onClose={() => setSheetAssistido(null)}
+        options={[
+          { label: rotuloReassistir, tone: 'primary', icon: <RotateCcw size={16} />, onClick: confirmarReassistir },
+          { label: rotuloNaoVisto, tone: 'danger', onClick: confirmarNaoVisto },
+        ]}
+      />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { getCache, setCache, onCacheInvalidate, invalidateCache } from '../lib/dataCache'
+import { registrarAssistido } from '../lib/watchLog'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
@@ -368,12 +369,16 @@ export default function SeriesPage() {
 
     const { error } = jaMarcado
       ? await supabase.from('watched_episode').delete().eq('user_id', user.id).eq('episode_id', episodeId)
-      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId })
+      : await supabase.from('watched_episode').upsert({ user_id: user.id, episode_id: episodeId, watched_at: new Date().toISOString() })
 
     if (error) {
       console.error('Erro ao marcar episódio assistido:', error)
       setSaindoIds((prev) => { const n = new Set(prev); n.delete(episodeId); return n })
       return
+    }
+
+    if (!jaMarcado) {
+      registrarAssistido({ userId: user.id, episodeIds: [episodeId] })
     }
 
     // Invalida cache do perfil para atualizar estatísticas no perfil

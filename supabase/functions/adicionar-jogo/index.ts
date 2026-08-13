@@ -55,7 +55,7 @@ serve(async (req) => {
     if (!existente || forceUpdate) {
       const [jogo] = await igdbQuery(
         "games",
-        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer; where id = ${Number(igdb_id)};`,
+        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url; where id = ${Number(igdb_id)};`,
       );
 
       if (!jogo) {
@@ -98,6 +98,27 @@ serve(async (req) => {
         platforms,
         developer,
       });
+
+      // Onde jogar/comprar: só os sites da IGDB que são lojas de fato (as demais
+      // categorias são rede social/wiki/etc, sem valor pra essa seção). IGDB não dá
+      // logo pra loja (diferente da TMDB), por isso só nome + link direto.
+      const lojasPorCategoria: Record<number, string> = {
+        13: "Steam",
+        15: "itch.io",
+        16: "Epic Games Store",
+        17: "GOG",
+      };
+      const linhasLojas = (jogo.websites ?? [])
+        .filter((w: any) => lojasPorCategoria[w.category])
+        .map((w: any) => ({
+          titulo_id: tituloId,
+          tipo: "loja",
+          provider_name: lojasPorCategoria[w.category],
+          url: w.url,
+        }));
+      if (linhasLojas.length) {
+        await db.from("titulo_provedor").upsert(linhasLojas, { onConflict: "titulo_id,tipo,provider_name" });
+      }
     }
 
     if (status && status !== "none") {
