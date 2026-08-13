@@ -17,6 +17,20 @@ export async function registrarAssistido({ userId, episodeIds, tituloId }) {
   if (error) console.error('Erro ao registrar histórico de assistido:', error)
 }
 
+// Zera o histórico ao marcar como "não visto"/"não jogado" — a contagem de reassistidas
+// é por ciclo de visto/não-visto, não histórico vitalício, então some junto com o desmarcar.
+export async function apagarHistorico({ userId, episodeIds, tituloId }) {
+  if (!userId) return
+
+  if (episodeIds?.length) {
+    const { error } = await supabase.from('watch_log').delete().eq('user_id', userId).in('episode_id', episodeIds)
+    if (error) console.error('Erro ao apagar histórico de assistido:', error)
+  } else if (tituloId) {
+    const { error } = await supabase.from('watch_log').delete().eq('user_id', userId).eq('titulo_id', tituloId)
+    if (error) console.error('Erro ao apagar histórico de assistido:', error)
+  }
+}
+
 // Retorna um Map<episode_id, quantidade> com quantas vezes cada episódio da lista foi
 // assistido pelo usuário (para exibir "Assistido · Nx" quando > 1).
 export async function contarAssistidosPorEpisodio(userId, episodeIds) {

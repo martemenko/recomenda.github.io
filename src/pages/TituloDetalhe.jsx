@@ -4,7 +4,7 @@ import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, 
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
-import { registrarAssistido, contarAssistidosPorTitulo } from '../lib/watchLog'
+import { registrarAssistido, apagarHistorico, contarAssistidosPorTitulo } from '../lib/watchLog'
 import SectionLabel from '../components/SectionLabel'
 import SubTabs from '../components/SubTabs'
 import ActionSheet from '../components/ActionSheet'
@@ -185,6 +185,21 @@ export default function TituloDetalhe() {
       return list
     }
 
+    // Re-busca provedores (streaming/loja) já cacheados no banco — chamado depois do
+    // refresh em segundo plano, quando a Edge Function pode ter acabado de gravá-los.
+    const recarregarProvedores = async () => {
+      const [provedoresList, linkProv] = await Promise.all([
+        supabase.from('titulo_provedor').select('*').eq('titulo_id', id).order('display_priority', { ascending: true }).then(res => res.data ?? []),
+        tipo === 'tv'
+          ? supabase.from('series').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
+          : tipo === 'movie'
+          ? supabase.from('movies').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
+          : Promise.resolve(null),
+      ])
+      setProvedores(provedoresList)
+      setLinkProvedores(linkProv)
+    }
+
     // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo.
     // Tradução só existe pra fonte TMDB (tv/movie) — pular pra jogo evita um round-trip
     // que nunca acha nada (IGDB não passa por esse fluxo de tradução).
@@ -192,7 +207,7 @@ export default function TituloDetalhe() {
       tipo === 'game'
         ? Promise.resolve(null)
         : callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
-      supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes').eq('id', id).maybeSingle().then(res => res.data),
+      supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes, external_id').eq('id', id).maybeSingle().then(res => res.data),
       tipo === 'tv'
         ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
         : tipo === 'movie'
@@ -229,21 +244,41 @@ export default function TituloDetalhe() {
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
 
     // Sincronização em Background Reativa silenciosa (reaproveita "base" — se veio
-    // preenchido, o título já existia antes desta carga, sem precisar de outra query)
-    if (base && tipo === 'tv' && user) {
-      callFunction('adicionar-titulo', {
-        tmdb_id: Number(id),
-        media_type: 'tv',
-        status: 'none'
-      })
-      .then(async () => {
-        const novosEps = await obterEpisodiosPaginados()
-        if (novosEps && novosEps.length > eps.length) {
-          setEpisodios(novosEps)
-          console.log(`[Importador] Novas temporadas e episódios sincronizados em background (${novosEps.length - eps.length} novos).`)
-        }
-      })
-      .catch((err) => console.error('Erro na atualização em background:', err))
+    // preenchido, o título já existia antes desta carga, sem precisar de outra query).
+    // Usa base.external_id (id real na TMDB/IGDB) — "id" aqui é a PK sintética interna
+    // de `titulo`, não o id externo, então nunca deve ser mandado pras Edge Functions.
+    if (base && base.external_id && user) {
+      if (tipo === 'tv') {
+        callFunction('adicionar-titulo', {
+          tmdb_id: base.external_id,
+          media_type: 'tv',
+          status: 'none'
+        })
+        .then(async () => {
+          const novosEps = await obterEpisodiosPaginados()
+          if (novosEps && novosEps.length > eps.length) {
+            setEpisodios(novosEps)
+            console.log(`[Importador] Novas temporadas e episódios sincronizados em background (${novosEps.length - eps.length} novos).`)
+          }
+          await recarregarProvedores()
+        })
+        .catch((err) => console.error('Erro na atualização em background:', err))
+      } else if (tipo === 'movie') {
+        callFunction('adicionar-titulo', {
+          tmdb_id: base.external_id,
+          media_type: 'movie',
+          status: 'none'
+        })
+        .then(recarregarProvedores)
+        .catch((err) => console.error('Erro na atualização em background:', err))
+      } else if (tipo === 'game') {
+        callFunction('adicionar-jogo', {
+          igdb_id: base.external_id,
+          status: 'none'
+        })
+        .then(recarregarProvedores)
+        .catch((err) => console.error('Erro na atualização em background:', err))
+      }
     }
   }
 
@@ -374,14 +409,15 @@ export default function TituloDetalhe() {
     setAssistidos(novasMarcadas)
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
 
-    // Toda marcação (primeira vez ou reassistir) soma no histórico — nunca some ao desmarcar
-    if (!desmarcar) {
-      setContagemEpisodios(prev => {
-        const novo = new Map(prev)
-        episodeIds.forEach(eid => novo.set(eid, (novo.get(eid) ?? 0) + 1))
-        return novo
+    // Toda marcação (primeira vez ou reassistir) soma no histórico; desmarcar zera de volta
+    setContagemEpisodios(prev => {
+      const novo = new Map(prev)
+      episodeIds.forEach(eid => {
+        if (desmarcar) novo.delete(eid)
+        else novo.set(eid, (novo.get(eid) ?? 0) + 1)
       })
-    }
+      return novo
+    })
 
     // 2. Processa a sincronização com o banco em segundo plano de forma silenciosa
     try {
@@ -403,6 +439,8 @@ export default function TituloDetalhe() {
 
       if (!desmarcar) {
         await registrarAssistido({ userId: user.id, episodeIds })
+      } else {
+        await apagarHistorico({ userId: user.id, episodeIds })
       }
     } catch (err) {
       console.error('[Importador] Erro na gravação:', err)
@@ -469,7 +507,7 @@ export default function TituloDetalhe() {
     const novoStatus = desmarcar ? 'quero_ver' : 'visto'
 
     setUserItem(prev => prev ? { ...prev, status: novoStatus } : { status: novoStatus, favorito: false })
-    if (!desmarcar) setContagemTitulo((c) => c + 1)
+    setContagemTitulo((c) => (desmarcar ? 0 : c + 1))
 
     const { error } = await supabase.from('user_item').upsert({
       user_id: user.id,
@@ -486,6 +524,8 @@ export default function TituloDetalhe() {
 
     if (!desmarcar) {
       await registrarAssistido({ userId: user.id, tituloId: Number(id) })
+    } else {
+      await apagarHistorico({ userId: user.id, tituloId: Number(id) })
     }
   }
 
