@@ -581,7 +581,7 @@ export default function Perfil() {
           aoExpandir={() => setSecaoExpandida({ titulo: 'Séries favoritas', itens: seriesFavoritas })}
         />
         <Prateleira
-          titulo="Filmes favoritas"
+          titulo="Filmes favoritos"
           itens={filmesFavoritos}
           navigate={navigate}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Filmes favoritos', itens: filmesFavoritos })}

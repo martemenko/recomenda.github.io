@@ -69,8 +69,11 @@ def atualizar_provedores(titulo_id, media_type, tmdb_id, tabela_filha):
     dados = tmdb_get(f"/{media_type}/{tmdb_id}/watch/providers")
     regiao = dados.get("results", {}).get("BR", {})
 
-    linhas = [
-        {
+    # Dedup por (tipo, provider_name): a TMDB às vezes lista o mesmo provedor duas vezes
+    # na mesma categoria (ex: "HBO Max"/"Max" durante rebranding) — duas linhas com o
+    # mesmo conflict target no mesmo upsert fazem o Postgres rejeitar a operação inteira.
+    provedores_por_chave = {
+        (tipo, p["provider_name"]): {
             "titulo_id": titulo_id,
             "tipo": tipo,
             "provider_name": p["provider_name"],
@@ -79,7 +82,8 @@ def atualizar_provedores(titulo_id, media_type, tmdb_id, tabela_filha):
         }
         for tipo in ("flatrate", "rent", "buy")
         for p in regiao.get(tipo, [])
-    ]
+    }
+    linhas = list(provedores_por_chave.values())
     if linhas:
         supabase.table("titulo_provedor").upsert(linhas, on_conflict="titulo_id,tipo,provider_name").execute()
 

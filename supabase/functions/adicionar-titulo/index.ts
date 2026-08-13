@@ -97,17 +97,29 @@ serve(async (req) => {
 
       // Upsert dos provedores de streaming (logos/nomes) — o link único de atribuição
       // fica na coluna watch_providers_link de series/movies, gravado abaixo.
-      const linhasProvedores = ["flatrate", "rent", "buy"].flatMap((tipo) =>
-        (regiaoProvedores?.[tipo] ?? []).map((p: any) => ({
-          titulo_id: tituloId,
-          tipo,
-          provider_name: p.provider_name,
-          logo_path: p.logo_path,
-          display_priority: p.display_priority ?? null,
-        })),
-      );
+      // Dedup por (tipo, provider_name): a TMDB às vezes lista o mesmo provedor duas
+      // vezes na mesma categoria (ex: "HBO Max"/"Max" no meio de rebranding) — duas
+      // linhas com o mesmo conflict target no mesmo upsert fazem o Postgres rejeitar
+      // a operação inteira ("ON CONFLICT DO UPDATE command cannot affect row a second
+      // time"), o que apagava silenciosamente TODOS os provedores daquele título.
+      const provedoresPorChave = new Map<string, any>();
+      for (const tipo of ["flatrate", "rent", "buy"]) {
+        for (const p of regiaoProvedores?.[tipo] ?? []) {
+          provedoresPorChave.set(`${tipo}::${p.provider_name}`, {
+            titulo_id: tituloId,
+            tipo,
+            provider_name: p.provider_name,
+            logo_path: p.logo_path,
+            display_priority: p.display_priority ?? null,
+          });
+        }
+      }
+      const linhasProvedores = Array.from(provedoresPorChave.values());
       if (linhasProvedores.length) {
-        await db.from("titulo_provedor").upsert(linhasProvedores, { onConflict: "titulo_id,tipo,provider_name" });
+        const { error: provedorErr } = await db
+          .from("titulo_provedor")
+          .upsert(linhasProvedores, { onConflict: "titulo_id,tipo,provider_name" });
+        if (provedorErr) console.error(`Erro ao gravar provedores de ${tmdb_id}:`, provedorErr);
       }
 
       if (media_type === "tv") {
