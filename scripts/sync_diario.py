@@ -217,7 +217,11 @@ def atualizar_lojas_jogos():
                 json={"igdb_id": jogo["external_id"], "status": "none"},
                 timeout=60,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                # Corpo da resposta é essencial pra diferenciar "nossa função recusou"
+                # de "o gateway do Supabase recusou antes de chegar na função" —
+                # raise_for_status() sozinho engole isso e só diz "401 Unauthorized".
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:500]}")
             corpo = resp.json()
             if corpo.get("error"):
                 raise RuntimeError(corpo["error"])

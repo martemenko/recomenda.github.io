@@ -27,7 +27,15 @@ serve(async (req) => {
     // .trim() nos dois lados: a service role key é um JWT longo, fácil de acabar com
     // espaço/quebra de linha sobrando ao colar num secret do GitHub/Supabase — isso
     // quebraria a comparação exata sem ser um problema real de autenticação.
-    const isChamadaDeSistema = authHeader.trim() === `Bearer ${SERVICE_ROLE_KEY.trim()}`;
+    const tokenRecebido = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const tokenEsperado = SERVICE_ROLE_KEY.trim();
+    // DEBUG TEMPORÁRIO — remover depois de diagnosticar o 401 da chamada de sistema.
+    // Só loga tamanho + 8 primeiros caracteres de cada lado (não expõe a chave inteira),
+    // só aparece nos Logs da função no dashboard, nunca na resposta HTTP.
+    console.error(
+      `[debug isChamadaDeSistema] recebido: len=${tokenRecebido.length} prefixo="${tokenRecebido.slice(0, 8)}" | esperado: len=${tokenEsperado.length} prefixo="${tokenEsperado.slice(0, 8)}" | igual=${tokenRecebido === tokenEsperado}`,
+    );
+    const isChamadaDeSistema = tokenRecebido === tokenEsperado;
 
     let userId: string | undefined;
     if (!isChamadaDeSistema) {
