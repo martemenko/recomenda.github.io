@@ -20,17 +20,26 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Chamada de sistema (ex: backfill em lote) autenticada com a service role key —
+    // já é o nível de confiança máximo do projeto, então dispensa usuário logado.
+    // Só serve pra ingestão (status "none"/ausente); a escrita em user_item abaixo
+    // continua exigindo um userId real, que uma chamada de sistema nunca tem.
+    const isChamadaDeSistema = authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
+
+    let userId: string | undefined;
+    if (!isChamadaDeSistema) {
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
       });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      userId = userData.user.id;
     }
-    const userId = userData.user.id;
 
     const { igdb_id, status } = await req.json();
     if (!igdb_id) {
@@ -55,7 +64,7 @@ serve(async (req) => {
     if (!existente || forceUpdate) {
       const [jogo] = await igdbQuery(
         "games",
-        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url,external_games.category,external_games.url; where id = ${Number(igdb_id)};`,
+        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.url,websites.type.type,external_games.url,external_games.uid,external_games.external_game_source.name; where id = ${Number(igdb_id)};`,
       );
 
       if (!jogo) {
@@ -103,25 +112,29 @@ serve(async (req) => {
       // fontes — "websites" (raramente tem loja, mas às vezes é a única com o link) e
       // "external_games" (cobre bem mais lojas, incluindo consoles). IGDB não dá logo
       // pra loja (diferente da TMDB), por isso só nome + link direto.
-      const lojasPorWebsite: Record<number, string> = {
-        13: "Steam",
-        15: "itch.io",
-        16: "Epic Games Store",
-        17: "GOG",
-      };
-      const lojasPorExternalGame: Record<number, string> = {
-        1: "Steam",
-        5: "GOG",
-        11: "Microsoft Store",
-        24: "Epic Games Store",
-        27: "itch.io",
-        28: "Xbox",
-        30: "PlayStation Store",
+      //
+      // IMPORTANTE: os enums numéricos antigos (websites.category / external_games.category)
+      // estão *deprecated* no schema oficial da IGDB (confirmado em api.igdb.com/v4/igdbapi.proto) —
+      // por isso o mapeamento por número nunca batia com nada. A loja agora vem como texto
+      // direto em external_games.external_game_source.name / websites.type.type, então só
+      // reconhecemos pelo nome (sem precisar mapear código -> nome).
+      const PALAVRAS_LOJA = ["steam", "gog", "epic", "itch", "playstation", "xbox", "microsoft", "amazon", "nintendo"];
+      const comoNomeDeLoja = (nome: string | undefined | null): string | null => {
+        if (!nome) return null;
+        const lower = nome.toLowerCase();
+        return PALAVRAS_LOJA.some((p) => lower.includes(p)) ? nome : null;
       };
 
+      // A IGDB nem sempre preenche external_games.url, mas o uid (id do app na própria
+      // loja) é confiável — pra Steam, o padrão de URL é estável, então reconstrói a
+      // partir do uid quando a API não manda o link direto.
       const candidatosLoja = [
-        ...(jogo.websites ?? []).map((w: any) => ({ nome: lojasPorWebsite[w.category], url: w.url })),
-        ...(jogo.external_games ?? []).map((e: any) => ({ nome: lojasPorExternalGame[e.category], url: e.url })),
+        ...(jogo.websites ?? []).map((w: any) => ({ nome: comoNomeDeLoja(w.type?.type), url: w.url })),
+        ...(jogo.external_games ?? []).map((e: any) => {
+          const nome = comoNomeDeLoja(e.external_game_source?.name);
+          const url = e.url || (nome?.toLowerCase().includes("steam") && e.uid ? `https://store.steampowered.com/app/${e.uid}` : null);
+          return { nome, url };
+        }),
       ].filter((c) => c.nome && c.url);
 
       // Dedup por nome de loja (o mesmo storefront pode aparecer nas duas fontes acima) —

@@ -1,6 +1,14 @@
 """
-Sync diário: consulta a Changes API da TMDB (últimas 24h) e re-busca só os
-títulos que já estão no nosso banco e que mudaram - não varre o catálogo inteiro.
+Sync diário: consulta a Changes API da TMDB (últimas 24h) e re-busca por completo só os
+títulos que já estão no nosso banco e que mudaram - não varre o catálogo inteiro com a
+ingestão pesada (detalhes/elenco/episódios).
+
+Onde assistir/loja é diferente: disponibilidade de streaming pode mudar sem a TMDB marcar
+o título como "alterado", então provedores são atualizados pra TODO o catálogo todo dia -
+via só o endpoint de watch/providers (leve) pra série/filme, e via a Edge Function
+adicionar-jogo (chamada de sistema, sem usuário) pra jogo, já que a IGDB não tem um
+endpoint de provedores separado do resto do jogo. Isso substitui refazer essa ingestão a
+cada visita de usuário na tela do título, que era caro à toa.
 
 Rodado 1x/dia pelo GitHub Actions (.github/workflows/sync-diario.yml).
 Variáveis de ambiente esperadas: TMDB_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -18,6 +26,15 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 HEADERS = {"Authorization": f"Bearer {TMDB_TOKEN}", "accept": "application/json"}
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+FUNCTIONS_URL = f"{SUPABASE_URL}/functions/v1"
+# Mesma service role key também autoriza a chamada de sistema nas Edge Functions
+# (adicionar-titulo/adicionar-jogo aceitam isso sem exigir usuário logado).
+FUNCTION_HEADERS = {
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "apikey": SUPABASE_KEY,
+    "Content-Type": "application/json",
+}
 
 
 def tmdb_get(path, params=None):
@@ -155,6 +172,59 @@ def atualizar_filme(tmdb_id, titulo_id):
     print(f"  - filme atualizado: {detalhes.get('title')} ({tmdb_id})")
 
 
+def atualizar_provedores_restantes(mapa, media_type, tabela_filha, ja_atualizados):
+    """Atualiza só o endpoint de watch/providers (bem mais leve que a re-ingestão
+    completa) dos títulos que não entraram no re-sync de hoje, pra manter streaming
+    fresco no catálogo inteiro sem repetir o fetch pesado de detalhes/episódios."""
+    pendentes = mapa.keys() - ja_atualizados
+    print(f"Atualizando só provedores de {len(pendentes)} título(s) ({tabela_filha}) fora do sync de hoje.")
+    for tmdb_id in pendentes:
+        try:
+            atualizar_provedores(mapa[tmdb_id], media_type, tmdb_id, tabela_filha)
+        except Exception as err:
+            print(f"  - falhou provedor de {tmdb_id}: {err}")
+
+
+def atualizar_lojas_jogos():
+    """A IGDB não tem um endpoint de 'onde comprar' separado do resto do jogo como a
+    TMDB tem — pra atualizar loja é preciso reingerir o jogo inteiro mesmo. Chama a
+    Edge Function adicionar-jogo (autenticada como chamada de sistema, sem usuário)
+    pra cada jogo do catálogo, uma vez por dia — nunca a cada visita de usuário."""
+    jogos = []
+    start, page_size = 0, 1000
+    while True:
+        resp = (
+            supabase.table("titulo")
+            .select("external_id, nome, games!inner(titulo_id)")
+            .eq("fonte", "igdb")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        data = resp.data
+        if not data:
+            break
+        jogos.extend(data)
+        if len(data) < page_size:
+            break
+        start += page_size
+
+    print(f"{len(jogos)} jogo(s) pra atualizar loja.")
+    for jogo in jogos:
+        try:
+            resp = requests.post(
+                f"{FUNCTIONS_URL}/adicionar-jogo",
+                headers=FUNCTION_HEADERS,
+                json={"igdb_id": jogo["external_id"], "status": "none"},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            corpo = resp.json()
+            if corpo.get("error"):
+                raise RuntimeError(corpo["error"])
+        except Exception as err:
+            print(f"  - falhou loja de {jogo.get('nome')}: {err}")
+
+
 def main():
     print("Consultando ids alterados nas últimas 24h na TMDB...")
     alteradas_tv = ids_alterados("tv")
@@ -173,6 +243,12 @@ def main():
     print(f"{len(para_atualizar_movie)} filme(s) do banco precisam de atualização.")
     for tmdb_id in para_atualizar_movie:
         atualizar_filme(tmdb_id, mapa_filmes[tmdb_id])
+
+    # Provedores (streaming/loja) do resto do catálogo, que não passou pela re-ingestão
+    # completa acima — ver docstring do módulo.
+    atualizar_provedores_restantes(mapa_series, "tv", "series", para_atualizar_tv)
+    atualizar_provedores_restantes(mapa_filmes, "movie", "movies", para_atualizar_movie)
+    atualizar_lojas_jogos()
 
     print("Sync diário concluído.")
 
