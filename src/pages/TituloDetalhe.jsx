@@ -185,21 +185,6 @@ export default function TituloDetalhe() {
       return list
     }
 
-    // Re-busca provedores (streaming/loja) já cacheados no banco — chamado depois do
-    // refresh em segundo plano, quando a Edge Function pode ter acabado de gravá-los.
-    const recarregarProvedores = async () => {
-      const [provedoresList, linkProv] = await Promise.all([
-        supabase.from('titulo_provedor').select('*').eq('titulo_id', id).order('display_priority', { ascending: true }).then(res => res.data ?? []),
-        tipo === 'tv'
-          ? supabase.from('series').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
-          : tipo === 'movie'
-          ? supabase.from('movies').select('watch_providers_link').eq('titulo_id', id).maybeSingle().then(res => res.data?.watch_providers_link ?? null)
-          : Promise.resolve(null),
-      ])
-      setProvedores(provedoresList)
-      setLinkProvedores(linkProv)
-    }
-
     // LOTE CONCORRENTE PARALELO: Carrega todos os dados paginados e metadados ao mesmo tempo.
     // Tradução só existe pra fonte TMDB (tv/movie) — pular pra jogo evita um round-trip
     // que nunca acha nada (IGDB não passa por esse fluxo de tradução).
@@ -243,42 +228,29 @@ export default function TituloDetalhe() {
     setUserItem(item)
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
 
-    // Sincronização em Background Reativa silenciosa (reaproveita "base" — se veio
-    // preenchido, o título já existia antes desta carga, sem precisar de outra query).
-    // Usa base.external_id (id real na TMDB/IGDB) — "id" aqui é a PK sintética interna
-    // de `titulo`, não o id externo, então nunca deve ser mandado pras Edge Functions.
-    if (base && base.external_id && user) {
-      if (tipo === 'tv') {
-        callFunction('adicionar-titulo', {
-          tmdb_id: base.external_id,
-          media_type: 'tv',
-          status: 'none'
-        })
-        .then(async () => {
-          const novosEps = await obterEpisodiosPaginados()
-          if (novosEps && novosEps.length > eps.length) {
-            setEpisodios(novosEps)
-            console.log(`[Importador] Novas temporadas e episódios sincronizados em background (${novosEps.length - eps.length} novos).`)
-          }
-          await recarregarProvedores()
-        })
-        .catch((err) => console.error('Erro na atualização em background:', err))
-      } else if (tipo === 'movie') {
-        callFunction('adicionar-titulo', {
-          tmdb_id: base.external_id,
-          media_type: 'movie',
-          status: 'none'
-        })
-        .then(recarregarProvedores)
-        .catch((err) => console.error('Erro na atualização em background:', err))
-      } else if (tipo === 'game') {
-        callFunction('adicionar-jogo', {
-          igdb_id: base.external_id,
-          status: 'none'
-        })
-        .then(recarregarProvedores)
-        .catch((err) => console.error('Erro na atualização em background:', err))
-      }
+    // Sincronização em Background Reativa silenciosa — só pra séries, pra pegar
+    // temporada/episódio novo entre visitas (reaproveita "base": se veio preenchido, o
+    // título já existia antes desta carga, sem precisar de outra query). Usa
+    // base.external_id (id real na TMDB) — "id" aqui é a PK sintética interna de
+    // `titulo`, não o id externo, então nunca deve ser mandado pra Edge Function.
+    // Provedores (streaming/loja) NÃO são mais atualizados aqui: reingerir tudo (elenco,
+    // temporadas, provedores) a cada visita de cada usuário é caro à toa pra filme/jogo
+    // (que não têm episódio novo pra pegar) — isso agora é responsabilidade do sync
+    // diário, que roda 1x por dia pra todo o catálogo.
+    if (base && base.external_id && user && tipo === 'tv') {
+      callFunction('adicionar-titulo', {
+        tmdb_id: base.external_id,
+        media_type: 'tv',
+        status: 'none'
+      })
+      .then(async () => {
+        const novosEps = await obterEpisodiosPaginados()
+        if (novosEps && novosEps.length > eps.length) {
+          setEpisodios(novosEps)
+          console.log(`[Importador] Novas temporadas e episódios sincronizados em background (${novosEps.length - eps.length} novos).`)
+        }
+      })
+      .catch((err) => console.error('Erro na atualização em background:', err))
     }
   }
 

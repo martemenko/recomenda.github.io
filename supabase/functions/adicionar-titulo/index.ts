@@ -27,17 +27,26 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Chamada de sistema (ex: backfill em lote) autenticada com a service role key —
+    // já é o nível de confiança máximo do projeto, então dispensa usuário logado.
+    // Só serve pra ingestão (status "none"/ausente); a escrita em user_item abaixo
+    // continua exigindo um userId real, que uma chamada de sistema nunca tem.
+    const isChamadaDeSistema = authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
+
+    let userId: string | undefined;
+    if (!isChamadaDeSistema) {
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
       });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      userId = userData.user.id;
     }
-    const userId = userData.user.id;
 
     const { tmdb_id, media_type, status } = await req.json();
     if (!tmdb_id || !["tv", "movie"].includes(media_type)) {

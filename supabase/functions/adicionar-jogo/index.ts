@@ -20,17 +20,26 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Chamada de sistema (ex: backfill em lote) autenticada com a service role key —
+    // já é o nível de confiança máximo do projeto, então dispensa usuário logado.
+    // Só serve pra ingestão (status "none"/ausente); a escrita em user_item abaixo
+    // continua exigindo um userId real, que uma chamada de sistema nunca tem.
+    const isChamadaDeSistema = authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
+
+    let userId: string | undefined;
+    if (!isChamadaDeSistema) {
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
       });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: "Usuário não autenticado." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      userId = userData.user.id;
     }
-    const userId = userData.user.id;
 
     const { igdb_id, status } = await req.json();
     if (!igdb_id) {
@@ -55,7 +64,7 @@ serve(async (req) => {
     if (!existente || forceUpdate) {
       const [jogo] = await igdbQuery(
         "games",
-        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url,external_games.category,external_games.url; where id = ${Number(igdb_id)};`,
+        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.category,websites.url,external_games.category,external_games.url,external_games.uid; where id = ${Number(igdb_id)};`,
       );
 
       if (!jogo) {
@@ -119,9 +128,16 @@ serve(async (req) => {
         30: "PlayStation Store",
       };
 
+      // A IGDB nem sempre preenche external_games.url, mas o uid (id do app na própria
+      // loja) é confiável — pra Steam, o padrão de URL é estável, então reconstrói a
+      // partir do uid quando a API não manda o link direto.
+      const CATEGORIA_STEAM_EXTERNAL_GAME = 1;
       const candidatosLoja = [
         ...(jogo.websites ?? []).map((w: any) => ({ nome: lojasPorWebsite[w.category], url: w.url })),
-        ...(jogo.external_games ?? []).map((e: any) => ({ nome: lojasPorExternalGame[e.category], url: e.url })),
+        ...(jogo.external_games ?? []).map((e: any) => ({
+          nome: lojasPorExternalGame[e.category],
+          url: e.url || (e.category === CATEGORIA_STEAM_EXTERNAL_GAME && e.uid ? `https://store.steampowered.com/app/${e.uid}` : null),
+        })),
       ].filter((c) => c.nome && c.url);
 
       // Dedup por nome de loja (o mesmo storefront pode aparecer nas duas fontes acima) —
