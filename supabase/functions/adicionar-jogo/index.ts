@@ -24,7 +24,10 @@ serve(async (req) => {
     // já é o nível de confiança máximo do projeto, então dispensa usuário logado.
     // Só serve pra ingestão (status "none"/ausente); a escrita em user_item abaixo
     // continua exigindo um userId real, que uma chamada de sistema nunca tem.
-    const isChamadaDeSistema = authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
+    // .trim() nos dois lados: a service role key é um JWT longo, fácil de acabar com
+    // espaço/quebra de linha sobrando ao colar num secret do GitHub/Supabase — isso
+    // quebraria a comparação exata sem ser um problema real de autenticação.
+    const isChamadaDeSistema = authHeader.trim() === `Bearer ${SERVICE_ROLE_KEY.trim()}`;
 
     let userId: string | undefined;
     if (!isChamadaDeSistema) {
