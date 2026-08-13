@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { getCache, setCache, onCacheInvalidate, invalidateCache } from '../lib/dataCache'
-import { registrarAssistido } from '../lib/watchLog'
+import { registrarAssistido, apagarHistorico } from '../lib/watchLog'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
@@ -379,6 +379,8 @@ export default function SeriesPage() {
 
     if (!jaMarcado) {
       registrarAssistido({ userId: user.id, episodeIds: [episodeId] })
+    } else {
+      apagarHistorico({ userId: user.id, episodeIds: [episodeId] })
     }
 
     // Invalida cache do perfil para atualizar estatísticas no perfil

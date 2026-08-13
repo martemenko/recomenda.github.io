@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock, Rot
 import { supabase, callFunction } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
-import { registrarAssistido, contarAssistidosPorEpisodio } from '../lib/watchLog'
+import { registrarAssistido, apagarHistorico, contarAssistidosPorEpisodio } from '../lib/watchLog'
 import SectionLabel from '../components/SectionLabel'
 import ActionSheet from '../components/ActionSheet'
 
@@ -170,6 +170,7 @@ export default function EpisodioDetalhe() {
 
   async function marcarNaoVisto() {
     setAssistido(false)
+    setVezesAssistido(0)
     setSheetAssistidoAberto(false)
     invalidateCache(['series', 'perfil'])
 
@@ -181,6 +182,7 @@ export default function EpisodioDetalhe() {
           .delete()
           .eq('user_id', user.id)
           .eq('episode_id', Number(id))
+        await apagarHistorico({ userId: user.id, episodeIds: [Number(id)] })
       }
     } catch (err) {
       console.error('Erro ao marcar como não visto:', err)
