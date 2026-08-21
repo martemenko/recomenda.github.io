@@ -28,9 +28,9 @@ function IconeReacao({ item, ativo, size }) {
     return (
       <span
         className={`inline-flex items-center justify-center rounded-full ${badgeAtivo}`}
-        style={{ width: size + 8, height: size + 8 }}
+        style={{ width: size + 4, height: size + 4 }}
       >
-        <Icon size={size - 2} className="text-bg" strokeWidth={2.5} />
+        <Icon size={size} className="text-bg" strokeWidth={2.5} />
       </span>
     )
   }

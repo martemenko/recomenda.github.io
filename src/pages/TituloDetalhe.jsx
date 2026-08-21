@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock, RotateCcw, MessageSquare } from 'lucide-react'
+import { toPng } from 'html-to-image'
+import { Heart, ChevronLeft, Star, Check, ChevronDown, ChevronUp, ChevronRight, Calendar, Lock, RotateCcw, MessageSquare, Share2, Download } from 'lucide-react'
 import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
@@ -19,25 +20,10 @@ import SubTabs from '../components/SubTabs'
 import ActionSheet from '../components/ActionSheet'
 import ComentarioThread from '../components/ComentarioThread'
 import ComentarioComposer from '../components/ComentarioComposer'
+import ReviewShareCard from '../components/ReviewShareCard'
+import { POSTER_BASE, resolverUrlImagemGrande } from '../lib/image'
 
-const POSTER_BASE = 'https://image.tmdb.org/t/p/w400'
 const PROVIDER_LOGO_BASE = 'https://image.tmdb.org/t/p/w92'
-
-// Imagens da TMDB vêm como path relativo (precisa prefixar POSTER_BASE); imagens
-// da IGDB (jogos) já vêm como URL absoluta — usar direto.
-function resolverUrlImagem(imagem) {
-  if (!imagem) return null
-  return imagem.startsWith('http') ? imagem : `${POSTER_BASE}${imagem}`
-}
-
-// Capa de jogo (IGDB) fica pixelada no hero se usar o mesmo tamanho pequeno
-// do grid (t_cover_big, ~264x374) — troca pela variante 2x só aqui, onde a
-// imagem ocupa a largura inteira da tela.
-function resolverUrlImagemGrande(imagem) {
-  const url = resolverUrlImagem(imagem)
-  if (!url) return null
-  return url.includes('images.igdb.com') ? url.replace('/t_cover_big/', '/t_cover_big_2x/') : url
-}
 
 // Função auxiliar para formatar datas de YYYY-MM-DD para DD/MM/YYYY
 function formatarData(dataStr) {
@@ -88,6 +74,10 @@ export default function TituloDetalhe() {
   const [contagemComentarios, setContagemComentarios] = useState(0)
   const [comentariosAbertos, setComentariosAbertos] = useState(false)
   const [avisoSpoilerAberto, setAvisoSpoilerAberto] = useState(false)
+  const [reviewCompartilhada, setReviewCompartilhada] = useState(false)
+  const [modalExportarAberto, setModalExportarAberto] = useState(false)
+  const [exportando, setExportando] = useState(false)
+  const cardExportRef = useRef(null)
 
   // Obtém a data local de hoje em formato YYYY-MM-DD absoluto e seguro contra fuso horário
   const hojeLocal = new Date()
@@ -475,6 +465,45 @@ export default function TituloDetalhe() {
     setReviewTexto(reviewRascunho)
   }
 
+  async function compartilharReviewComoComentario() {
+    if (!user || !reviewTexto || minhaNota <= 0) return
+
+    const texto = `⭐ ${minhaNota}/10 — ${reviewTexto}`
+    const { error } = await postarComentario({ userId: user.id, texto, tituloId: Number(id) })
+    if (error) {
+      console.error('Erro ao compartilhar review nos comentários:', error)
+      return
+    }
+    setReviewCompartilhada(true)
+    setContagemComentarios((c) => c + 1)
+  }
+
+  async function exportarImagemReview() {
+    if (!cardExportRef.current) return
+    setExportando(true)
+    try {
+      const dataUrl = await toPng(cardExportRef.current, { width: 1080, height: 1350, pixelRatio: 1 })
+
+      if (navigator.canShare && navigator.share) {
+        const blob = await (await fetch(dataUrl)).blob()
+        const arquivo = new File([blob], `review-${id}.png`, { type: 'image/png' })
+        if (navigator.canShare({ files: [arquivo] })) {
+          await navigator.share({ files: [arquivo], title: titulo?.nome })
+          return
+        }
+      }
+
+      const link = document.createElement('a')
+      link.href = dataUrl
+      link.download = `review-${id}.png`
+      link.click()
+    } catch (err) {
+      console.error('Erro ao exportar imagem da review:', err)
+    } finally {
+      setExportando(false)
+    }
+  }
+
   function episodiosAntesDe(alvo) {
     return episodios.filter(
       (e) =>
@@ -833,6 +862,27 @@ export default function TituloDetalhe() {
                       >
                         Editar review
                       </button>
+
+                      {(mediaType === 'movie' || mediaType === 'game') && (
+                        <div className="flex items-center gap-2 mt-3">
+                          {!reviewCompartilhada && (
+                            <button
+                              onClick={compartilharReviewComoComentario}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface2 border border-white/10 rounded-xl text-xs font-display font-medium text-ink"
+                            >
+                              <Share2 size={13} />
+                              Compartilhar nos comentários
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setModalExportarAberto(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface2 border border-white/10 rounded-xl text-xs font-display font-medium text-ink"
+                          >
+                            <Download size={13} />
+                            Exportar imagem
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
@@ -1232,6 +1282,43 @@ export default function TituloDetalhe() {
                 <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} onReagir={reagirComentario} />
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {modalExportarAberto && (
+        <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 px-6 gap-4">
+          <div
+            style={{ width: 1080 * 0.35, height: 1350 * 0.35, overflow: 'hidden' }}
+            className="rounded-2xl shadow-2xl"
+          >
+            <div style={{ transform: 'scale(0.35)', transformOrigin: 'top left' }}>
+              <ReviewShareCard
+                ref={cardExportRef}
+                titulo={titulo}
+                username={perfil?.username}
+                fotoPerfil={perfil?.foto_perfil}
+                nota={minhaNota}
+                reviewTexto={reviewTexto}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setModalExportarAberto(false)}
+              className="px-4 py-2.5 rounded-xl text-sm text-muted font-display font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={exportarImagemReview}
+              disabled={exportando}
+              className="flex items-center gap-2 px-5 py-2.5 bg-amber text-bg rounded-xl text-sm font-display font-semibold disabled:opacity-60"
+            >
+              <Download size={16} />
+              {exportando ? 'Gerando…' : 'Exportar imagem'}
+            </button>
           </div>
         </div>
       )}
