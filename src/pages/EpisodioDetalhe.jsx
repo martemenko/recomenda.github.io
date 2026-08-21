@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock, RotateCcw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock, RotateCcw, MessageSquare } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
 import { registrarAssistido, apagarHistorico, contarAssistidosPorEpisodio } from '../lib/watchLog'
-import { buscarComentarios, postarComentario } from '../lib/comentarios'
+import { buscarComentarios, buscarContagemComentarios, postarComentario } from '../lib/comentarios'
 import SectionLabel from '../components/SectionLabel'
 import ActionSheet from '../components/ActionSheet'
 import ComentarioThread from '../components/ComentarioThread'
@@ -44,18 +44,38 @@ export default function EpisodioDetalhe() {
   const [vezesAssistido, setVezesAssistido] = useState(0)
   const [sheetAssistidoAberto, setSheetAssistidoAberto] = useState(false)
   const [threadsComentarios, setThreadsComentarios] = useState([])
+  const [contagemComentarios, setContagemComentarios] = useState(0)
+  const [comentariosAbertos, setComentariosAbertos] = useState(false)
+  const [avisoSpoilerAberto, setAvisoSpoilerAberto] = useState(false)
 
   useEffect(() => {
     carregarDados()
   }, [id, user])
 
   useEffect(() => {
-    carregarComentarios()
+    buscarContagemComentarios({ episodeId: Number(id) }).then(setContagemComentarios)
   }, [id])
 
-  async function carregarComentarios() {
+  // Antes de abrir os comentários, verifica se a pessoa já marcou o episódio como
+  // visto — se não, mostra o aviso de spoiler em vez de abrir direto.
+  function tentarAbrirComentarios() {
+    if (assistido) {
+      abrirComentarios()
+    } else {
+      setAvisoSpoilerAberto(true)
+    }
+  }
+
+  async function abrirComentarios() {
+    setAvisoSpoilerAberto(false)
     const threads = await buscarComentarios({ episodeId: Number(id) })
     setThreadsComentarios(threads)
+    setComentariosAbertos(true)
+  }
+
+  async function marcarVistoEAbrirComentarios() {
+    await marcarAssistido()
+    abrirComentarios()
   }
 
   async function enviarComentarioRaiz(texto) {
@@ -67,6 +87,7 @@ export default function EpisodioDetalhe() {
     }
     const novaThread = { raiz: { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil } }, respostas: [] }
     setThreadsComentarios((prev) => [novaThread, ...prev])
+    setContagemComentarios((c) => c + 1)
     return true
   }
 
@@ -81,6 +102,7 @@ export default function EpisodioDetalhe() {
     setThreadsComentarios((prev) =>
       prev.map((t) => (t.raiz.id === threadId ? { ...t, respostas: [...t.respostas, novaResposta] } : t))
     )
+    setContagemComentarios((c) => c + 1)
     return true
   }
 
@@ -468,6 +490,18 @@ export default function EpisodioDetalhe() {
           )}
         </button>
 
+        <button
+          onClick={tentarAbrirComentarios}
+          className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 hover:border-white/20 transition-colors"
+        >
+          <MessageSquare size={18} className="text-teal flex-shrink-0" />
+          <span className="flex-1 text-left text-sm font-display font-medium text-ink">Comentários</span>
+          {contagemComentarios > 0 && (
+            <span className="text-xs font-mono text-teal bg-teal/10 px-2 py-0.5 rounded-full">{contagemComentarios}</span>
+          )}
+          <ChevronRight size={16} className="text-muted flex-shrink-0" />
+        </button>
+
         {/* Sinopse do Episódio */}
         <div className="bg-surface/70 border border-white/5 rounded-2xl p-4 pt-3">
           <SectionLabel className="!px-0 !pt-0 mb-1">Sinopse</SectionLabel>
@@ -599,22 +633,6 @@ export default function EpisodioDetalhe() {
         )}
       </div>
 
-      <SectionLabel>Comentários</SectionLabel>
-      <div className="px-4 pb-6">
-        {user && (
-          <div className="mb-4">
-            <ComentarioComposer onEnviar={enviarComentarioRaiz} />
-          </div>
-        )}
-        {threadsComentarios.length === 0 ? (
-          <div className="text-muted text-sm font-mono py-2">Nenhum comentário ainda.</div>
-        ) : (
-          threadsComentarios.map((t) => (
-            <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} />
-          ))
-        )}
-      </div>
-
       <ActionSheet
         open={sheetAssistidoAberto}
         title="Episódio assistido"
@@ -624,6 +642,41 @@ export default function EpisodioDetalhe() {
           { label: 'Marcar como não visto', tone: 'danger', onClick: marcarNaoVisto },
         ]}
       />
+
+      <ActionSheet
+        open={avisoSpoilerAberto}
+        title="Você ainda não viu este episódio — os comentários podem ter spoilers"
+        onClose={() => setAvisoSpoilerAberto(false)}
+        options={[
+          { label: 'Mostrar mesmo assim', onClick: abrirComentarios },
+          { label: 'Assisti a este episódio', tone: 'primary', icon: <Check size={16} />, onClick: marcarVistoEAbrirComentarios },
+        ]}
+      />
+
+      {comentariosAbertos && (
+        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
+            <button onClick={() => setComentariosAbertos(false)} className="text-muted">
+              <ChevronLeft size={22} />
+            </button>
+            <div className="text-base text-ink font-display font-semibold">Comentários</div>
+          </div>
+          <div className="flex-1 overflow-y-auto scroll-area px-4 py-4">
+            {user && (
+              <div className="mb-4">
+                <ComentarioComposer onEnviar={enviarComentarioRaiz} />
+              </div>
+            )}
+            {threadsComentarios.length === 0 ? (
+              <div className="text-muted text-sm font-mono py-2">Nenhum comentário ainda.</div>
+            ) : (
+              threadsComentarios.map((t) => (
+                <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
