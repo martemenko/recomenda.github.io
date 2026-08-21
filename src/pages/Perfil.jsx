@@ -542,7 +542,7 @@ export default function Perfil() {
 
       <div className="flex-1 overflow-y-auto scroll-area pb-24">
         <div className="relative">
-          <div className="w-full h-50 bg-surface2 relative overflow-hidden">
+          <div className="w-full h-48 bg-surface2 relative overflow-hidden">
             {perfil?.foto_capa && (
               <img src={perfil.foto_capa} alt="Capa" className="w-full h-full object-cover" />
             )}
