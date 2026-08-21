@@ -5,7 +5,15 @@ import { supabase, callFunction, idiomaAtual } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
 import { registrarAssistido, apagarHistorico, contarAssistidosPorTitulo } from '../lib/watchLog'
-import { buscarComentarios, buscarContagemComentarios, postarComentario } from '../lib/comentarios'
+import {
+  buscarComentarios,
+  buscarContagemComentarios,
+  postarComentario,
+  alternarReacao,
+  aplicarReacaoOtimista,
+  atualizarComentarioNasThreads,
+  REACAO_VAZIA,
+} from '../lib/comentarios'
 import SectionLabel from '../components/SectionLabel'
 import SubTabs from '../components/SubTabs'
 import ActionSheet from '../components/ActionSheet'
@@ -110,9 +118,25 @@ export default function TituloDetalhe() {
 
   async function abrirComentarios() {
     setAvisoSpoilerAberto(false)
-    const threads = await buscarComentarios({ tituloId: Number(id) })
+    const threads = await buscarComentarios({ tituloId: Number(id), currentUserId: user?.id })
     setThreadsComentarios(threads)
     setComentariosAbertos(true)
+  }
+
+  async function reagirComentario(comentario, tipo) {
+    if (!user) return
+    const reacaoAnterior = comentario.reacoes?.minhaReacao ?? null
+
+    setThreadsComentarios((prev) =>
+      atualizarComentarioNasThreads(prev, comentario.id, (c) => aplicarReacaoOtimista(c, tipo))
+    )
+
+    const { error } = await alternarReacao({ comentarioId: comentario.id, userId: user.id, tipo, reacaoAtual: reacaoAnterior })
+    if (error) {
+      console.error('Erro ao reagir:', error)
+      const threads = await buscarComentarios({ tituloId: Number(id), currentUserId: user?.id })
+      setThreadsComentarios(threads)
+    }
   }
 
   async function marcarVistoEAbrirComentarios() {
@@ -127,7 +151,10 @@ export default function TituloDetalhe() {
       console.error('Erro ao comentar:', error)
       return false
     }
-    const novaThread = { raiz: { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil } }, respostas: [] }
+    const novaThread = {
+      raiz: { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil }, reacoes: { ...REACAO_VAZIA } },
+      respostas: [],
+    }
     setThreadsComentarios((prev) => [novaThread, ...prev])
     setContagemComentarios((c) => c + 1)
     return true
@@ -140,7 +167,11 @@ export default function TituloDetalhe() {
       console.error('Erro ao responder comentário:', error)
       return false
     }
-    const novaResposta = { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil } }
+    const novaResposta = {
+      ...data,
+      autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil },
+      reacoes: { ...REACAO_VAZIA },
+    }
     setThreadsComentarios((prev) =>
       prev.map((t) => (t.raiz.id === threadId ? { ...t, respostas: [...t.respostas, novaResposta] } : t))
     )
@@ -1198,7 +1229,7 @@ export default function TituloDetalhe() {
               <div className="text-muted text-sm font-mono py-2">Nenhum comentário ainda.</div>
             ) : (
               threadsComentarios.map((t) => (
-                <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} />
+                <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} onReagir={reagirComentario} />
               ))
             )}
           </div>
