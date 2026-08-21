@@ -16,6 +16,7 @@ const TituloDetalhe = lazy(() => import('./pages/TituloDetalhe'))
 const TituloResolver = lazy(() => import('./pages/TituloResolver'))
 const ListaDetalhe = lazy(() => import('./pages/ListaDetalhe'))
 const EpisodioDetalhe = lazy(() => import('./pages/EpisodioDetalhe'))
+const PerfilPublico = lazy(() => import('./pages/PerfilPublico'))
 
 function LoadingFallback() {
   return (
@@ -69,6 +70,7 @@ function RotasPrivadas() {
           <Route path="/titulo/:id" element={<TituloDetalhe />} />
           <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
           <Route path="/lista/:id" element={<ListaDetalhe />} />
+          <Route path="/usuario/:userId" element={<PerfilPublico />} />
           <Route path="*" element={<Navigate to="/series" replace />} />
         </Routes>
       </Suspense>

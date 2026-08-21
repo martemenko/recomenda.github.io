@@ -10,6 +10,7 @@ import { getCroppedImg } from '../lib/cropImage'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
+import UserAvatar from '../components/UserAvatar'
 
 // Desenha um fundo escuro com um furo circular de 280px centralizado (compatível 100% com WebKit / Safari)
 function MascaraCircular() {
@@ -87,6 +88,9 @@ export default function Perfil() {
   const { user, perfil, recarregarPerfil } = useAuth()
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
+  const [contagemSeguidores, setContagemSeguidores] = useState(0)
+  const [contagemSeguindo, setContagemSeguindo] = useState(0)
+  const [listaSeguidores, setListaSeguidores] = useState(null) // { tipo: 'seguidores'|'seguindo', pessoas: [...] } | null
 
   const [seriesFavoritas, setSeriesFavoritas] = useState([])
   const [filmesFavoritos, setFilmesFavoritos] = useState([])
@@ -136,6 +140,8 @@ export default function Perfil() {
         meusFilmes: mf,
         meusJogos: mj,
         listas: ls,
+        contagemSeguidores: cs,
+        contagemSeguindo: cg,
       } = cached.data
       setStats(cachedStats)
       setSeriesFavoritas(sf ?? [])
@@ -145,6 +151,8 @@ export default function Perfil() {
       setMeusFilmes(mf ?? [])
       setMeusJogos(mj ?? [])
       setListas(ls ?? [])
+      setContagemSeguidores(cs ?? 0)
+      setContagemSeguindo(cg ?? 0)
 
       if (cached.isStale) {
         carregar()
@@ -165,7 +173,7 @@ export default function Perfil() {
   async function carregar() {
     try {
       // --- LOTE PARALELO 1: Dispara as 4 buscas iniciais pesadas ao mesmo tempo ---
-      const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData] = await Promise.all([
+      const [epsComDataRes, filmesVistosRaw, favoritosRaw, listasData, seguidoresRes, seguindoRes] = await Promise.all([
         buscarTodasLinhas(() =>
           supabase
             .from('watched_episode')
@@ -196,7 +204,9 @@ export default function Perfil() {
           .then((res) => {
             if (res.error) console.error('Erro ao buscar listas:', res.error)
             return res.data ?? []
-          })
+          }),
+        supabase.from('seguidor').select('seguidor_id', { count: 'exact', head: true }).eq('seguido_id', user.id),
+        supabase.from('seguidor').select('seguido_id', { count: 'exact', head: true }).eq('seguidor_id', user.id),
       ])
 
       const epsComData = epsComDataRes ?? []
@@ -320,6 +330,11 @@ export default function Perfil() {
       }))
       setListas(listasOrdenadas)
 
+      const contagemSeguidoresVal = seguidoresRes.count ?? 0
+      const contagemSeguindoVal = seguindoRes.count ?? 0
+      setContagemSeguidores(contagemSeguidoresVal)
+      setContagemSeguindo(contagemSeguindoVal)
+
       setCache(`perfil_data_${user.id}`, {
         stats: novoStats,
         seriesFavoritas: sfList,
@@ -328,7 +343,9 @@ export default function Perfil() {
         minhasSeries: msList,
         meusFilmes: mfList,
         meusJogos: mjList,
-        listas: listasOrdenadas
+        listas: listasOrdenadas,
+        contagemSeguidores: contagemSeguidoresVal,
+        contagemSeguindo: contagemSeguindoVal,
       })
 
     } catch (err) {
@@ -448,6 +465,35 @@ export default function Perfil() {
     }
   }
 
+  async function abrirListaSeguidores(tipo) {
+    const { data: relacoes, error: relErro } =
+      tipo === 'seguidores'
+        ? await supabase.from('seguidor').select('seguidor_id').eq('seguido_id', user.id)
+        : await supabase.from('seguidor').select('seguido_id').eq('seguidor_id', user.id)
+
+    if (relErro) {
+      console.error('Erro ao carregar lista de seguidores:', relErro)
+      return
+    }
+
+    const ids = (relacoes ?? []).map((r) => (tipo === 'seguidores' ? r.seguidor_id : r.seguido_id))
+    if (ids.length === 0) {
+      setListaSeguidores({ tipo, pessoas: [] })
+      return
+    }
+
+    const { data: pessoas, error: perfisErro } = await supabase
+      .from('usuarios_publico')
+      .select('id, username, foto_perfil')
+      .in('id', ids)
+
+    if (perfisErro) {
+      console.error('Erro ao carregar perfis dos seguidores:', perfisErro)
+      return
+    }
+    setListaSeguidores({ tipo, pessoas: pessoas ?? [] })
+  }
+
   return (
     <>
       <style>{`
@@ -561,7 +607,19 @@ export default function Perfil() {
           </div>
         </div>
 
-        <div className="px-4 py-3 text-center text-sm text-muted font-mono">{perfil?.username}</div>
+        <div className="px-4 py-3 text-center">
+          <div className="text-sm text-muted font-mono">{perfil?.username}</div>
+          <div className="flex items-center justify-center gap-6 mt-2">
+            <button onClick={() => abrirListaSeguidores('seguidores')} className="text-center">
+              <span className="text-sm font-display font-semibold text-ink">{contagemSeguidores}</span>
+              <span className="text-xs text-muted ml-1">Seguidores</span>
+            </button>
+            <button onClick={() => abrirListaSeguidores('seguindo')} className="text-center">
+              <span className="text-sm font-display font-semibold text-ink">{contagemSeguindo}</span>
+              <span className="text-xs text-muted ml-1">Seguindo</span>
+            </button>
+          </div>
+        </div>
 
         <SectionLabel>Estatísticas</SectionLabel>
         {stats && (
@@ -749,6 +807,38 @@ export default function Perfil() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {listaSeguidores && (
+        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
+            <button onClick={() => setListaSeguidores(null)} className="text-muted">
+              <ArrowLeft size={20} />
+            </button>
+            <div className="text-base text-ink font-display font-semibold">
+              {listaSeguidores.tipo === 'seguidores' ? 'Seguidores' : 'Seguindo'}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto scroll-area px-4 py-2">
+            {listaSeguidores.pessoas.length === 0 ? (
+              <div className="text-muted text-sm font-mono py-6 text-center">Nada por aqui ainda.</div>
+            ) : (
+              listaSeguidores.pessoas.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setListaSeguidores(null)
+                    navigate(`/usuario/${p.id}`)
+                  }}
+                  className="w-full flex items-center gap-3 py-2.5 border-b border-white/5 text-left"
+                >
+                  <UserAvatar fotoPerfil={p.foto_perfil} username={p.username} size={40} />
+                  <span className="text-sm text-ink font-display font-medium">@{p.username}</span>
+                </button>
+              ))
+            )}
           </div>
         </div>
       )}
