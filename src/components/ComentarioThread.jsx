@@ -5,9 +5,9 @@ import UserAvatar from './UserAvatar'
 import ComentarioComposer from './ComentarioComposer'
 
 const TIPOS_REACAO = [
-  { tipo: 'curtir', Icon: ThumbsUp, label: 'Curtir' },
-  { tipo: 'rir', Icon: Laugh, label: 'Rir' },
-  { tipo: 'amei', Icon: Heart, label: 'Amei' },
+  { tipo: 'curtir', Icon: ThumbsUp, label: 'Curtir', corAtiva: 'text-amber' },
+  { tipo: 'rir', Icon: Laugh, label: 'Rir', corAtiva: 'text-teal' },
+  { tipo: 'amei', Icon: Heart, label: 'Amei', corAtiva: 'text-heart' },
 ]
 
 const DURACAO_PRESSIONAR_MS = 400
@@ -62,7 +62,7 @@ function BarraReacoes({ comentario, onReagir }) {
         onContextMenu={(e) => e.preventDefault()}
         style={{ touchAction: 'manipulation' }}
         className={`flex items-center gap-1.5 text-xs font-display font-medium transition-colors select-none ${
-          minhaReacao ? 'text-amber' : 'text-muted hover:text-ink'
+          tipoAtual ? tipoAtual.corAtiva : 'text-muted hover:text-ink'
         }`}
       >
         <IconPrincipal size={14} fill={minhaReacao ? 'currentColor' : 'none'} />
@@ -74,13 +74,13 @@ function BarraReacoes({ comentario, onReagir }) {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setTrayAberto(false)} />
           <div className="absolute bottom-full left-0 mb-1.5 flex items-center gap-1 bg-surface border border-white/10 rounded-full px-2 py-1.5 shadow-lg z-50">
-            {TIPOS_REACAO.map(({ tipo, Icon, label }) => (
+            {TIPOS_REACAO.map(({ tipo, Icon, label, corAtiva }) => (
               <button
                 key={tipo}
                 onClick={() => escolher(tipo)}
                 aria-label={label}
                 className={`p-1.5 rounded-full hover:bg-white/10 hover:scale-110 transition-transform ${
-                  minhaReacao === tipo ? 'text-amber' : 'text-ink'
+                  minhaReacao === tipo ? corAtiva : 'text-ink'
                 }`}
               >
                 <Icon size={18} fill={minhaReacao === tipo ? 'currentColor' : 'none'} />
