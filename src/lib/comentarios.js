@@ -40,6 +40,19 @@ export async function buscarComentarios({ tituloId, episodeId }) {
     .map((raiz) => ({ raiz, respostas: respostasPorThread.get(raiz.id) ?? [] }))
 }
 
+export async function buscarContagemComentarios({ tituloId, episodeId }) {
+  const query = supabase.from('comentario').select('id', { count: 'exact', head: true })
+  const { count, error } = tituloId != null
+    ? await query.eq('titulo_id', tituloId)
+    : await query.eq('episode_id', episodeId)
+
+  if (error) {
+    console.error('Erro ao contar comentários:', error)
+    return 0
+  }
+  return count ?? 0
+}
+
 export async function postarComentario({ userId, texto, tituloId, episodeId, threadId = null }) {
   const { data, error } = await supabase
     .from('comentario')
