@@ -59,6 +59,9 @@ export default function TituloDetalhe() {
   const [elenco, setElenco] = useState([])
   const [userItem, setUserItem] = useState(null)
   const [minhaNota, setMinhaNota] = useState(0)
+  const [reviewTexto, setReviewTexto] = useState('')
+  const [reviewRascunho, setReviewRascunho] = useState('')
+  const [salvandoReview, setSalvandoReview] = useState(false)
   const [episodios, setEpisodios] = useState([])
   const [assistidos, setAssistidos] = useState(new Set())
   const [contagemEpisodios, setContagemEpisodios] = useState(new Map())
@@ -201,7 +204,7 @@ export default function TituloDetalhe() {
       obterEpisodiosPaginados(),
       obterAssistidosPaginados(),
       user ? supabase.from('user_item').select('status, favorito').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
-      user ? supabase.from('user_rating').select('rating_score').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
+      user ? supabase.from('user_rating').select('rating_score, review_texto').eq('user_id', user.id).eq('titulo_id', id).maybeSingle().then(res => res.data) : null,
       obterHistoricoEpisodiosPaginado(),
       tipo !== 'tv' && user ? contarAssistidosPorTitulo(user.id, Number(id)) : Promise.resolve(0),
       supabase.from('titulo_provedor').select('*').eq('titulo_id', id).order('display_priority', { ascending: true }).then(res => res.data ?? []),
@@ -227,6 +230,8 @@ export default function TituloDetalhe() {
     setLinkProvedores(linkProv)
     setUserItem(item)
     setMinhaNota((prev) => rating?.rating_score ?? prev ?? 0)
+    setReviewTexto(rating?.review_texto ?? '')
+    setReviewRascunho(rating?.review_texto ?? '')
 
     // Sincronização em Background Reativa silenciosa — só pra séries, pra pegar
     // temporada/episódio novo entre visitas (reaproveita "base": se veio preenchido, o
@@ -342,15 +347,38 @@ export default function TituloDetalhe() {
     setMinhaNota(nota) // Atualização visual imediata para manter as estrelas douradas
     invalidateCache(['perfil'])
 
-    try {
-      // Envia a avaliação via Edge Function 'leave-eval'
-      const res = await callFunction('leave-eval', { titulo_id: Number(id), rating_score: nota })
-      if (res?.error) {
-        console.warn('[avaliar] Nota registrada localmente. Alerta do servidor:', res.error)
-      }
-    } catch (err) {
-      console.warn('[avaliar] Erro na requisição de avaliação:', err)
+    const { error } = await supabase.from('user_rating').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      rating_score: nota,
+      review_texto: reviewTexto || null,
+      rated_at: new Date().toISOString(),
+    })
+
+    if (error) {
+      console.error('Erro ao avaliar:', error)
+      carregar() // Reverte se falhar
     }
+  }
+
+  async function salvarReview() {
+    if (!user || minhaNota <= 0) return
+    setSalvandoReview(true)
+
+    const { error } = await supabase.from('user_rating').upsert({
+      user_id: user.id,
+      titulo_id: Number(id),
+      rating_score: minhaNota,
+      review_texto: reviewRascunho || null,
+      rated_at: new Date().toISOString(),
+    })
+
+    setSalvandoReview(false)
+    if (error) {
+      console.error('Erro ao salvar review:', error)
+      return
+    }
+    setReviewTexto(reviewRascunho)
   }
 
   function episodiosAntesDe(alvo) {
@@ -685,6 +713,39 @@ export default function TituloDetalhe() {
                   )
                 })}
               </div>
+
+              {minhaNota > 0 && (
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  {reviewTexto && reviewRascunho === reviewTexto ? (
+                    <div>
+                      <p className="text-sm text-ink/90 leading-relaxed whitespace-pre-wrap">{reviewTexto}</p>
+                      <button
+                        onClick={() => setReviewTexto('')}
+                        className="mt-2 text-xs font-display font-semibold text-amber hover:underline"
+                      >
+                        Editar review
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <textarea
+                        value={reviewRascunho}
+                        onChange={(e) => setReviewRascunho(e.target.value)}
+                        placeholder="Deixar uma review (opcional)"
+                        rows={3}
+                        className="w-full bg-surface2/40 border border-white/10 rounded-xl p-2.5 text-sm text-ink placeholder:text-muted/60 resize-none focus:outline-none focus:border-amber/40"
+                      />
+                      <button
+                        onClick={salvarReview}
+                        disabled={salvandoReview}
+                        className="mt-2 px-3 py-1.5 bg-amber text-bg rounded-xl text-xs font-display font-semibold disabled:opacity-60"
+                      >
+                        {salvandoReview ? 'Salvando…' : 'Salvar review'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {mediaType === 'tv' && episodios.length > 0 && (
