@@ -6,7 +6,7 @@ import ComentarioComposer from './ComentarioComposer'
 
 const TIPOS_REACAO = [
   { tipo: 'curtir', Icon: ThumbsUp, label: 'Curtir', corAtiva: 'text-amber' },
-  { tipo: 'rir', Icon: Laugh, label: 'Rir', corAtiva: 'text-teal' },
+  { tipo: 'rir', Icon: Laugh, label: 'Rir', corAtiva: 'text-teal', badgeAtivo: 'bg-teal' },
   { tipo: 'amei', Icon: Heart, label: 'Amei', corAtiva: 'text-heart' },
 ]
 
@@ -14,6 +14,28 @@ const DURACAO_PRESSIONAR_MS = 400
 
 function formatarData(dataStr) {
   return new Date(dataStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+// A carinha de rir tem olhos/boca desenhados na mesma cor do traço — preencher
+// o ícone inteiro com currentColor esconde essas features dentro do preenchimento.
+// Pra ela (e só pra ela, ThumbsUp/Heart ficam bem preenchidos normalmente), quando
+// ativa desenha um selo com fundo roxo neon e a carinha em roxo escuro (cor do
+// fundo da página) por cima, pra manter o traço do rosto visível.
+function IconeReacao({ item, ativo, size }) {
+  const { Icon, corAtiva, badgeAtivo } = item
+
+  if (ativo && badgeAtivo) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center rounded-full ${badgeAtivo}`}
+        style={{ width: size + 8, height: size + 8 }}
+      >
+        <Icon size={size - 2} className="text-bg" strokeWidth={2.5} />
+      </span>
+    )
+  }
+
+  return <Icon size={size} className={ativo ? corAtiva : undefined} fill={ativo ? 'currentColor' : 'none'} />
 }
 
 // Botão único (estilo Facebook/LinkedIn): toque rápido alterna a reação atual
@@ -27,7 +49,7 @@ function BarraReacoes({ comentario, onReagir }) {
   const minhaReacao = comentario.reacoes?.minhaReacao ?? null
   const totalReacoes = TIPOS_REACAO.reduce((soma, { tipo }) => soma + (comentario.reacoes?.[tipo] ?? 0), 0)
   const tipoAtual = TIPOS_REACAO.find((t) => t.tipo === minhaReacao)
-  const IconPrincipal = tipoAtual?.Icon ?? ThumbsUp
+  const itemPrincipal = tipoAtual ?? TIPOS_REACAO[0]
 
   function iniciarPressao() {
     segurouRef.current = false
@@ -65,7 +87,7 @@ function BarraReacoes({ comentario, onReagir }) {
           tipoAtual ? tipoAtual.corAtiva : 'text-muted hover:text-ink'
         }`}
       >
-        <IconPrincipal size={14} fill={minhaReacao ? 'currentColor' : 'none'} />
+        <IconeReacao item={itemPrincipal} ativo={!!minhaReacao} size={14} />
         <span>{tipoAtual?.label ?? 'Curtir'}</span>
         {totalReacoes > 0 && <span className="text-muted">· {totalReacoes}</span>}
       </button>
@@ -74,16 +96,16 @@ function BarraReacoes({ comentario, onReagir }) {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setTrayAberto(false)} />
           <div className="absolute bottom-full left-0 mb-1.5 flex items-center gap-1 bg-surface border border-white/10 rounded-full px-2 py-1.5 shadow-lg z-50">
-            {TIPOS_REACAO.map(({ tipo, Icon, label, corAtiva }) => (
+            {TIPOS_REACAO.map((item) => (
               <button
-                key={tipo}
-                onClick={() => escolher(tipo)}
-                aria-label={label}
+                key={item.tipo}
+                onClick={() => escolher(item.tipo)}
+                aria-label={item.label}
                 className={`p-1.5 rounded-full hover:bg-white/10 hover:scale-110 transition-transform ${
-                  minhaReacao === tipo ? corAtiva : 'text-ink'
+                  minhaReacao === item.tipo ? item.corAtiva : 'text-ink'
                 }`}
               >
-                <Icon size={18} fill={minhaReacao === tipo ? 'currentColor' : 'none'} />
+                <IconeReacao item={item} ativo={minhaReacao === item.tipo} size={18} />
               </button>
             ))}
           </div>
