@@ -5,8 +5,11 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
 import { registrarAssistido, apagarHistorico, contarAssistidosPorEpisodio } from '../lib/watchLog'
+import { buscarComentarios, postarComentario } from '../lib/comentarios'
 import SectionLabel from '../components/SectionLabel'
 import ActionSheet from '../components/ActionSheet'
+import ComentarioThread from '../components/ComentarioThread'
+import ComentarioComposer from '../components/ComentarioComposer'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w500'
 
@@ -25,7 +28,7 @@ function formatarDataExtensa(dataStr) {
 export default function EpisodioDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, perfil } = useAuth()
 
   const [episodio, setEpisodio] = useState(null)
   const [titulo, setTitulo] = useState(null)
@@ -40,10 +43,46 @@ export default function EpisodioDetalhe() {
   const [episodioAnterior, setEpisodioAnterior] = useState(null)
   const [vezesAssistido, setVezesAssistido] = useState(0)
   const [sheetAssistidoAberto, setSheetAssistidoAberto] = useState(false)
+  const [threadsComentarios, setThreadsComentarios] = useState([])
 
   useEffect(() => {
     carregarDados()
   }, [id, user])
+
+  useEffect(() => {
+    carregarComentarios()
+  }, [id])
+
+  async function carregarComentarios() {
+    const threads = await buscarComentarios({ episodeId: Number(id) })
+    setThreadsComentarios(threads)
+  }
+
+  async function enviarComentarioRaiz(texto) {
+    if (!user) return false
+    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id) })
+    if (error) {
+      console.error('Erro ao comentar:', error)
+      return false
+    }
+    const novaThread = { raiz: { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil } }, respostas: [] }
+    setThreadsComentarios((prev) => [novaThread, ...prev])
+    return true
+  }
+
+  async function enviarResposta(texto, threadId) {
+    if (!user) return false
+    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id), threadId })
+    if (error) {
+      console.error('Erro ao responder comentário:', error)
+      return false
+    }
+    const novaResposta = { ...data, autor: { username: perfil?.username, foto_perfil: perfil?.foto_perfil } }
+    setThreadsComentarios((prev) =>
+      prev.map((t) => (t.raiz.id === threadId ? { ...t, respostas: [...t.respostas, novaResposta] } : t))
+    )
+    return true
+  }
 
   async function carregarDados() {
     setCarregando(true)
@@ -557,6 +596,22 @@ export default function EpisodioDetalhe() {
               </button>
             ) : <div className="flex-1" />}
           </div>
+        )}
+      </div>
+
+      <SectionLabel>Comentários</SectionLabel>
+      <div className="px-4 pb-6">
+        {user && (
+          <div className="mb-4">
+            <ComentarioComposer onEnviar={enviarComentarioRaiz} />
+          </div>
+        )}
+        {threadsComentarios.length === 0 ? (
+          <div className="text-muted text-sm font-mono py-2">Nenhum comentário ainda.</div>
+        ) : (
+          threadsComentarios.map((t) => (
+            <ComentarioThread key={t.raiz.id} thread={t} onResponder={enviarResposta} />
+          ))
         )}
       </div>
 
