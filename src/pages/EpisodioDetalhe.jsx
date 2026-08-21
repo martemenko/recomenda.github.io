@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Star, Check, Calendar, Clock, Eye, Lock, RotateCcw } from 'lucide-react'
-import { supabase, callFunction } from '../lib/supabaseClient'
+import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
 import { registrarAssistido, apagarHistorico, contarAssistidosPorEpisodio } from '../lib/watchLog'
@@ -31,6 +31,9 @@ export default function EpisodioDetalhe() {
   const [titulo, setTitulo] = useState(null)
   const [assistido, setAssistido] = useState(false)
   const [minhaNota, setMinhaNota] = useState(0)
+  const [reviewTexto, setReviewTexto] = useState('')
+  const [reviewRascunho, setReviewRascunho] = useState('')
+  const [salvandoReview, setSalvandoReview] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [expandirSinopse, setExpandirSinopse] = useState(false)
   const [proximoEpisodio, setProximoEpisodio] = useState(null)
@@ -87,7 +90,7 @@ export default function EpisodioDetalhe() {
         // 4. Buscar nota dada pelo usuário para o episódio
         const { data: ratingData } = await supabase
           .from('user_rating_episode')
-          .select('rating_score')
+          .select('rating_score, review_texto')
           .eq('user_id', user.id)
           .eq('episode_id', id)
           .maybeSingle()
@@ -97,6 +100,8 @@ export default function EpisodioDetalhe() {
         } else {
           setMinhaNota(0)
         }
+        setReviewTexto(ratingData?.review_texto ?? '')
+        setReviewRascunho(ratingData?.review_texto ?? '')
       }
 
       // 5. Buscar episódio anterior e próximo da mesma série
@@ -210,15 +215,10 @@ export default function EpisodioDetalhe() {
             user_id: user.id,
             episode_id: Number(id),
             rating_score: notaDada,
+            review_texto: reviewTexto || null,
             rated_at: new Date().toISOString()
           })
           if (upsertErr) console.warn('Aviso upsert rating:', upsertErr)
-
-          // Chamar Edge Function 'leave-eval' do Supabase se disponível
-          await callFunction('leave-eval', {
-            episode_id: Number(id),
-            rating_score: notaDada
-          })
         }
       } else {
         if (isRealUser) {
@@ -228,6 +228,8 @@ export default function EpisodioDetalhe() {
             .eq('user_id', user.id)
             .eq('episode_id', Number(id))
           if (delErr) console.warn('Aviso delete rating:', delErr)
+          setReviewTexto('')
+          setReviewRascunho('')
         }
       }
 
@@ -248,6 +250,26 @@ export default function EpisodioDetalhe() {
     } catch (err) {
       console.error('Erro ao avaliar episódio:', err)
     }
+  }
+
+  async function salvarReviewEpisodio() {
+    if (!user || minhaNota <= 0) return
+    setSalvandoReview(true)
+
+    const { error } = await supabase.from('user_rating_episode').upsert({
+      user_id: user.id,
+      episode_id: Number(id),
+      rating_score: minhaNota,
+      review_texto: reviewRascunho || null,
+      rated_at: new Date().toISOString(),
+    })
+
+    setSalvandoReview(false)
+    if (error) {
+      console.error('Erro ao salvar review do episódio:', error)
+      return
+    }
+    setReviewTexto(reviewRascunho)
   }
 
   function handleVoltar() {
@@ -467,6 +489,39 @@ export default function EpisodioDetalhe() {
               )
             })}
           </div>
+
+          {minhaNota > 0 && (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              {reviewTexto && reviewRascunho === reviewTexto ? (
+                <div>
+                  <p className="text-sm text-ink/90 leading-relaxed whitespace-pre-wrap">{reviewTexto}</p>
+                  <button
+                    onClick={() => setReviewTexto('')}
+                    className="mt-2 text-xs font-display font-semibold text-amber hover:underline"
+                  >
+                    Editar review
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <textarea
+                    value={reviewRascunho}
+                    onChange={(e) => setReviewRascunho(e.target.value)}
+                    placeholder="Deixar uma review (opcional)"
+                    rows={3}
+                    className="w-full bg-surface2/40 border border-white/10 rounded-xl p-2.5 text-sm text-ink placeholder:text-muted/60 resize-none focus:outline-none focus:border-amber/40"
+                  />
+                  <button
+                    onClick={salvarReviewEpisodio}
+                    disabled={salvandoReview}
+                    className="mt-2 px-3 py-1.5 bg-amber text-bg rounded-xl text-xs font-display font-semibold disabled:opacity-60"
+                  >
+                    {salvandoReview ? 'Salvando…' : 'Salvar review'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Navegação Entre Episódios (Anterior / Próximo) */}
