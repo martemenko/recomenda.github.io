@@ -1,38 +1,94 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ThumbsUp, Laugh, Heart } from 'lucide-react'
 import UserAvatar from './UserAvatar'
 import ComentarioComposer from './ComentarioComposer'
 
 const TIPOS_REACAO = [
-  { tipo: 'curtir', Icon: ThumbsUp },
-  { tipo: 'rir', Icon: Laugh },
-  { tipo: 'amei', Icon: Heart },
+  { tipo: 'curtir', Icon: ThumbsUp, label: 'Curtir' },
+  { tipo: 'rir', Icon: Laugh, label: 'Rir' },
+  { tipo: 'amei', Icon: Heart, label: 'Amei' },
 ]
+
+const DURACAO_PRESSIONAR_MS = 400
 
 function formatarData(dataStr) {
   return new Date(dataStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+// Botão único (estilo Facebook/LinkedIn): toque rápido alterna a reação atual
+// (ou "curtir" se ainda não tinha nenhuma); pressionar e segurar abre um tray
+// com os 3 tipos pra escolher — solta e toca no ícone desejado.
 function BarraReacoes({ comentario, onReagir }) {
+  const [trayAberto, setTrayAberto] = useState(false)
+  const timerRef = useRef(null)
+  const segurouRef = useRef(false)
+
+  const minhaReacao = comentario.reacoes?.minhaReacao ?? null
+  const totalReacoes = TIPOS_REACAO.reduce((soma, { tipo }) => soma + (comentario.reacoes?.[tipo] ?? 0), 0)
+  const tipoAtual = TIPOS_REACAO.find((t) => t.tipo === minhaReacao)
+  const IconPrincipal = tipoAtual?.Icon ?? ThumbsUp
+
+  function iniciarPressao() {
+    segurouRef.current = false
+    timerRef.current = setTimeout(() => {
+      segurouRef.current = true
+      setTrayAberto(true)
+    }, DURACAO_PRESSIONAR_MS)
+  }
+
+  function cancelarPressao() {
+    clearTimeout(timerRef.current)
+  }
+
+  function aoSoltar() {
+    cancelarPressao()
+    if (!segurouRef.current) {
+      onReagir(comentario, minhaReacao ?? 'curtir')
+    }
+  }
+
+  function escolher(tipo) {
+    setTrayAberto(false)
+    onReagir(comentario, tipo)
+  }
+
   return (
-    <div className="flex items-center gap-3 mt-1.5">
-      {TIPOS_REACAO.map(({ tipo, Icon }) => {
-        const contagem = comentario.reacoes?.[tipo] ?? 0
-        const ativa = comentario.reacoes?.minhaReacao === tipo
-        return (
-          <button
-            key={tipo}
-            onClick={() => onReagir(comentario, tipo)}
-            className={`flex items-center gap-1 text-xs font-display font-medium transition-colors ${
-              ativa ? 'text-amber' : 'text-muted hover:text-ink'
-            }`}
-          >
-            <Icon size={14} fill={ativa ? 'currentColor' : 'none'} />
-            {contagem > 0 && <span>{contagem}</span>}
-          </button>
-        )
-      })}
+    <div className="relative inline-block mt-1.5">
+      <button
+        onPointerDown={iniciarPressao}
+        onPointerUp={aoSoltar}
+        onPointerLeave={cancelarPressao}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ touchAction: 'manipulation' }}
+        className={`flex items-center gap-1.5 text-xs font-display font-medium transition-colors select-none ${
+          minhaReacao ? 'text-amber' : 'text-muted hover:text-ink'
+        }`}
+      >
+        <IconPrincipal size={14} fill={minhaReacao ? 'currentColor' : 'none'} />
+        <span>{tipoAtual?.label ?? 'Curtir'}</span>
+        {totalReacoes > 0 && <span className="text-muted">· {totalReacoes}</span>}
+      </button>
+
+      {trayAberto && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setTrayAberto(false)} />
+          <div className="absolute bottom-full left-0 mb-1.5 flex items-center gap-1 bg-surface border border-white/10 rounded-full px-2 py-1.5 shadow-lg z-50">
+            {TIPOS_REACAO.map(({ tipo, Icon, label }) => (
+              <button
+                key={tipo}
+                onClick={() => escolher(tipo)}
+                aria-label={label}
+                className={`p-1.5 rounded-full hover:bg-white/10 hover:scale-110 transition-transform ${
+                  minhaReacao === tipo ? 'text-amber' : 'text-ink'
+                }`}
+              >
+                <Icon size={18} fill={minhaReacao === tipo ? 'currentColor' : 'none'} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
