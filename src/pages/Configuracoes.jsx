@@ -51,6 +51,27 @@ export default function Configuracoes() {
           </button>
         ))}
       </div>
+
+      <SectionLabel>Sobre</SectionLabel>
+      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 space-y-3">
+        {/* TODO: trocar por <img src={logoTmdb} .../> assim que tivermos o
+            logo oficial da TMDB (baixado do site deles, ver conversa sobre
+            atribuição) -- o texto abaixo já cumpre a exigência do disclaimer,
+            mas o logo também é obrigatório nos termos de uso da API. */}
+        <p className="text-[11px] text-muted leading-relaxed">
+          This app uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise
+          approved by TMDB.
+        </p>
+        {/* TODO: trocar por <img src={logoIgdb} .../> com o logo oficial (ver
+            press kit em igdb.com/press) assim que tivermos o arquivo -- a
+            exigência de atribuição da IGDB pede logo + este texto. Confirmar
+            a wording exata (e o que muda com um acordo comercial assinado)
+            direto no press kit deles antes de publicar, já que não consegui
+            abrir aquela página aqui pra conferir a citação literal. */}
+        <p className="text-[11px] text-muted leading-relaxed">
+          Game data provided by IGDB.com.
+        </p>
+      </div>
     </div>
   )
 }
