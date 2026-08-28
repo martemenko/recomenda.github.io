@@ -13,6 +13,8 @@ const JogosPage = lazy(() => import('./pages/JogosPage'))
 const Explorar = lazy(() => import('./pages/Explorar'))
 const Perfil = lazy(() => import('./pages/Perfil'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const ContaConfiguracoes = lazy(() => import('./pages/ContaConfiguracoes'))
+const ImportarDados = lazy(() => import('./pages/ImportarDados'))
 const TituloDetalhe = lazy(() => import('./pages/TituloDetalhe'))
 const TituloResolver = lazy(() => import('./pages/TituloResolver'))
 const ListaDetalhe = lazy(() => import('./pages/ListaDetalhe'))
@@ -83,6 +85,8 @@ function RotasPrivadas() {
           <Route path="/explorar" element={<Explorar />} />
           <Route path="/perfil" element={<Perfil />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
+          <Route path="/configuracoes/conta" element={<ContaConfiguracoes />} />
+          <Route path="/configuracoes/importar" element={<ImportarDados />} />
           <Route path="/titulo/novo/:externalId" element={<TituloResolver />} />
           <Route path="/titulo/:id" element={<TituloDetalhe />} />
           <Route path="/episodio/:id" element={<EpisodioDetalhe />} />
