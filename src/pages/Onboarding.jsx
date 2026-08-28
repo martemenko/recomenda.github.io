@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { validarDataNascimento } from '../lib/dataNascimento'
 
 // Primeiro login: usuário confirma/ajusta o username (o trigger
-// cria_perfil_usuario já preenche com o prefixo do e-mail), informa a idade
-// (obrigatória — vai alimentar uma futura feature de recomendação) e,
-// opcionalmente, o nome real. Depois disso `onboarding_completo` vira true e
-// esta tela não aparece mais (ver gate em App.jsx).
+// cria_perfil_usuario já preenche com o prefixo do e-mail), informa a data
+// de nascimento (obrigatória — vai alimentar uma futura feature de
+// recomendação) e, opcionalmente, o nome real. Depois disso
+// `onboarding_completo` vira true e esta tela não aparece mais (ver gate em
+// App.jsx).
 export default function Onboarding() {
   const { user, perfil, recarregarPerfil } = useAuth()
   const [username, setUsername] = useState(perfil?.username ?? '')
-  const [idade, setIdade] = useState('')
+  const [dataNascimento, setDataNascimento] = useState('')
   const [nome, setNome] = useState('')
   const [erro, setErro] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -19,13 +21,12 @@ export default function Onboarding() {
     e.preventDefault()
     setErro('')
 
-    const idadeNum = Number(idade)
     if (!username.trim()) {
       setErro('Escolhe um username.')
       return
     }
-    if (!idade || !Number.isInteger(idadeNum) || idadeNum < 13 || idadeNum > 120) {
-      setErro('Informa uma idade válida.')
+    if (!validarDataNascimento(dataNascimento).valido) {
+      setErro('Informa uma data de nascimento válida.')
       return
     }
 
@@ -34,7 +35,7 @@ export default function Onboarding() {
       .from('usuarios')
       .update({
         username: username.trim(),
-        user_age: idadeNum,
+        data_nascimento: dataNascimento,
         nome: nome.trim() || null,
         onboarding_completo: true,
       })
@@ -72,16 +73,13 @@ export default function Onboarding() {
           className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
         />
         <label className="text-xs text-muted font-mono mt-2">
-          Idade <span className="text-[10px]">(usamos pra melhorar as recomendações)</span>
+          Data de nascimento <span className="text-[10px]">(usamos pra melhorar as recomendações)</span>
         </label>
         <input
-          type="number"
-          placeholder="Idade"
-          value={idade}
-          onChange={(e) => setIdade(e.target.value)}
+          type="date"
+          value={dataNascimento}
+          onChange={(e) => setDataNascimento(e.target.value)}
           required
-          min={13}
-          max={120}
           className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
         />
         <label className="text-xs text-muted font-mono mt-2">

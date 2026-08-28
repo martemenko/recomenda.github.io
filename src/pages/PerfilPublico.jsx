@@ -52,10 +52,7 @@ export default function PerfilPublico() {
     }
     setPerfilAlvo(perfil)
 
-    // Perfil privado visto por outra pessoa: só o @ fica visível, sem buscar
-    // estatísticas/contagens (a RLS já bloquearia mesmo, isso só evita o round-trip).
     const souEuAgora = currentUser && currentUser.id === userId
-    if (perfil.perfil_privado && !souEuAgora) return
 
     const [statsRes, seguidoresRes, seguindoRes, minhaRelacaoRes] = await Promise.all([
       buscarEstatisticasUsuario(userId),
@@ -71,10 +68,16 @@ export default function PerfilPublico() {
     setContagemSeguindo(seguindoRes.count ?? 0)
     setSeguindo(!!minhaRelacaoRes.data)
 
+    // Uma seção só é efetivamente oculta quando o perfil inteiro está
+    // marcado como privado E aquela seção não foi reaberta como exceção --
+    // com o perfil público, as flags de seção não têm efeito nenhum (ver
+    // migração 20260828030000_privacidade_por_excecao.sql).
+    const oculta = (flag) => !!perfil.perfil_privado && !!flag
+
     await Promise.all([
-      carregarHistorico(userId, souEuAgora, perfil.privado_historico),
-      carregarFavoritos(userId, souEuAgora, perfil.privado_favoritos),
-      carregarListas(userId, souEuAgora, perfil.privado_listas),
+      carregarHistorico(userId, souEuAgora, oculta(perfil.privado_historico)),
+      carregarFavoritos(userId, souEuAgora, oculta(perfil.privado_favoritos)),
+      carregarListas(userId, souEuAgora, oculta(perfil.privado_listas)),
     ])
   }
 
@@ -82,7 +85,7 @@ export default function PerfilPublico() {
   // própria linha); qualquer outra pessoa lê a view *_publico, que já
   // devolve vazio quando a seção está oculta -- a checagem de `oculta` aqui é
   // só pra distinguir "oculta" de "vazia" na UI (ver migração
-  // 20260828010000_onboarding_e_privacidade.sql).
+  // 20260828030000_privacidade_por_excecao.sql).
   async function carregarHistorico(alvoId, ehDono, oculta) {
     if (!ehDono && oculta) {
       setHistorico(null)
@@ -220,22 +223,9 @@ export default function PerfilPublico() {
   if (!perfilAlvo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
 
   const souEu = currentUser && currentUser.id === userId
-
-  if (perfilAlvo.perfil_privado && !souEu) {
-    return (
-      <div className="flex-1 overflow-y-auto scroll-area relative pb-12">
-        <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-3 bg-bg/95 backdrop-blur-md border-b border-white/5">
-          <button onClick={handleVoltar} aria-label="Voltar" className="text-muted">
-            <ArrowLeft size={20} />
-          </button>
-        </div>
-        <div className="flex flex-col items-center justify-center pt-16 px-4 text-center">
-          <div className="text-lg font-display font-semibold text-ink">@{perfilAlvo.username}</div>
-          <p className="text-muted text-sm font-mono mt-3">Este perfil é privado.</p>
-        </div>
-      </div>
-    )
-  }
+  // Mesma regra de "oculta(flag)" do carregar() acima, pra decidir o que
+  // mostrar/avisar na renderização.
+  const oculto = (flag) => !!perfilAlvo.perfil_privado && !!flag
 
   return (
     <div className="flex-1 overflow-y-auto scroll-area relative pb-12">
@@ -252,6 +242,12 @@ export default function PerfilPublico() {
         {(perfilAlvo.nome || perfilAlvo.user_age) && (
           <div className="text-xs text-muted mt-0.5">
             {[perfilAlvo.nome, perfilAlvo.user_age && `${perfilAlvo.user_age} anos`].filter(Boolean).join(' · ')}
+          </div>
+        )}
+        {perfilAlvo.perfil_privado && !souEu && (
+          <div className="flex items-center gap-1.5 text-muted text-[11px] font-mono mt-1.5">
+            <Lock size={11} />
+            Perfil privado — só o que a pessoa liberou aparece abaixo
           </div>
         )}
 
@@ -281,7 +277,7 @@ export default function PerfilPublico() {
       </div>
 
       <SectionLabel>Estatísticas</SectionLabel>
-      <OcultaParaOutrosAviso souEu={souEu} oculto={perfilAlvo.privado_estatisticas} />
+      <OcultaParaOutrosAviso souEu={souEu} oculto={oculto(perfilAlvo.privado_estatisticas)} />
       {stats ? (
         <div className="grid grid-cols-2 gap-3 px-4 mb-2">
           <StatCard label="Tempo vendo TV" valor={stats.tempoTv} />
@@ -294,11 +290,11 @@ export default function PerfilPublico() {
         <SecaoOculta souEu={souEu} />
       )}
 
-      <Prateleira titulo="Favoritos" itens={favoritos} souEu={souEu} oculto={perfilAlvo.privado_favoritos} navigate={navigate} />
-      <Prateleira titulo="Histórico" itens={historico} souEu={souEu} oculto={perfilAlvo.privado_historico} navigate={navigate} />
+      <Prateleira titulo="Favoritos" itens={favoritos} souEu={souEu} oculto={oculto(perfilAlvo.privado_favoritos)} navigate={navigate} />
+      <Prateleira titulo="Histórico" itens={historico} souEu={souEu} oculto={oculto(perfilAlvo.privado_historico)} navigate={navigate} />
 
       <SectionLabel>Listas</SectionLabel>
-      <OcultaParaOutrosAviso souEu={souEu} oculto={perfilAlvo.privado_listas} />
+      <OcultaParaOutrosAviso souEu={souEu} oculto={oculto(perfilAlvo.privado_listas)} />
       {listas === null ? (
         <SecaoOculta souEu={souEu} />
       ) : listas.length === 0 ? (
