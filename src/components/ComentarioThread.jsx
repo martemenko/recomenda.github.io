@@ -131,7 +131,17 @@ function LinhaComentario({ comentario, navigate, onReagir, indentado }) {
           </button>
           <span className="text-[10px] text-muted">{formatarData(comentario.created_at)}</span>
         </div>
-        <p className="text-sm text-ink/90 mt-0.5 whitespace-pre-wrap break-words">{comentario.texto}</p>
+        {comentario.texto && (
+          <p className="text-sm text-ink/90 mt-0.5 whitespace-pre-wrap break-words">{comentario.texto}</p>
+        )}
+        {(comentario.imagem_url || comentario.gif_url) && (
+          <img
+            src={comentario.imagem_url || comentario.gif_url}
+            alt=""
+            loading="lazy"
+            className="mt-1.5 max-w-[200px] max-h-[200px] rounded-xl border border-white/10 object-cover"
+          />
+        )}
         <BarraReacoes comentario={comentario} onReagir={onReagir} />
       </div>
     </div>
@@ -142,8 +152,8 @@ export default function ComentarioThread({ thread, onResponder, onReagir }) {
   const navigate = useNavigate()
   const [respondendo, setRespondendo] = useState(false)
 
-  async function enviarResposta(texto) {
-    const ok = await onResponder(texto, thread.raiz.id)
+  async function enviarResposta(payload) {
+    const ok = await onResponder(payload, thread.raiz.id)
     if (ok) setRespondendo(false)
     return ok
   }

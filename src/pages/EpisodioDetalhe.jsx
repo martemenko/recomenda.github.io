@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { invalidateCache } from '../lib/dataCache'
 import { registrarAssistido, apagarHistorico, contarAssistidosPorEpisodio } from '../lib/watchLog'
+import { enviarImagemComentario } from '../lib/uploadImagem'
 import {
   buscarComentarios,
   buscarContagemComentarios,
@@ -102,9 +103,11 @@ export default function EpisodioDetalhe() {
     abrirComentarios()
   }
 
-  async function enviarComentarioRaiz(texto) {
+  async function enviarComentarioRaiz({ texto, imagemFile, gifUrl }) {
     if (!user) return false
-    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id) })
+    const { url: imagemUrl, error: erroImagem } = await enviarImagemComentario(imagemFile, user.id)
+    if (erroImagem) return false
+    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id), imagemUrl, gifUrl })
     if (error) {
       console.error('Erro ao comentar:', error)
       return false
@@ -118,9 +121,11 @@ export default function EpisodioDetalhe() {
     return true
   }
 
-  async function enviarResposta(texto, threadId) {
+  async function enviarResposta({ texto, imagemFile, gifUrl }, threadId) {
     if (!user) return false
-    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id), threadId })
+    const { url: imagemUrl, error: erroImagem } = await enviarImagemComentario(imagemFile, user.id)
+    if (erroImagem) return false
+    const { data, error } = await postarComentario({ userId: user.id, texto, episodeId: Number(id), threadId, imagemUrl, gifUrl })
     if (error) {
       console.error('Erro ao responder comentário:', error)
       return false
