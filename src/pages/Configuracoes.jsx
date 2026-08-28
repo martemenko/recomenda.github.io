@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { supabase, callFunction } from '../lib/supabaseClient'
@@ -99,15 +99,108 @@ async function resolverTmdbId({ tmdbId, tvdbId, imdbId, nomeInicial, mediaType, 
   return { tmdbIdNum, nomeExibicao }
 }
 
+// Toggles de privacidade por seção — cada um mapeia direto pra uma coluna
+// booleana em usuarios (ver migração 20260828010000_onboarding_e_privacidade.sql).
+const SECOES_PRIVACIDADE = [
+  { campo: 'privado_estatisticas', titulo: 'Estatísticas', descricao: 'Tempo assistido, episódios, filmes e jogos' },
+  { campo: 'privado_historico', titulo: 'Histórico', descricao: 'O que você marcou como visto/jogado' },
+  { campo: 'privado_favoritos', titulo: 'Favoritos', descricao: 'Seus títulos favoritados' },
+  { campo: 'privado_listas', titulo: 'Listas', descricao: 'Suas listas personalizadas' },
+]
+
+const CAMPOS_DADOS_PESSOAIS = [
+  { campo: 'compartilhar_nome', titulo: 'Nome', descricao: 'Mostrar seu nome no seu perfil público' },
+  { campo: 'compartilhar_idade', titulo: 'Idade', descricao: 'Mostrar sua idade no seu perfil público' },
+]
+
 export default function Configuracoes() {
   const navigate = useNavigate()
+  const { user, perfil, recarregarPerfil } = useAuth()
   const [perfilPrivado, setPerfilPrivado] = useState(false)
+  const [privacidadeSecoes, setPrivacidadeSecoes] = useState({
+    privado_estatisticas: false,
+    privado_historico: false,
+    privado_favoritos: false,
+    privado_listas: false,
+    compartilhar_nome: false,
+    compartilhar_idade: false,
+  })
+  const [nomeEditavel, setNomeEditavel] = useState('')
+  const [idadeEditavel, setIdadeEditavel] = useState('')
+  const [salvandoDadosPessoais, setSalvandoDadosPessoais] = useState(false)
+  const [dadosPessoaisMsg, setDadosPessoaisMsg] = useState('')
   const [zipFile, setZipFile] = useState(null)
   const [importando, setImportando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [porcentagemProgresso, setPorcentagemProgresso] = useState(0)
   const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
+
+  // `perfil` (AuthProvider, select('*') em usuarios) carrega de forma
+  // assíncrona -- sincroniza os toggles locais assim que os dados chegarem.
+  useEffect(() => {
+    if (!perfil) return
+    setPerfilPrivado(!!perfil.perfil_privado)
+    setPrivacidadeSecoes({
+      privado_estatisticas: !!perfil.privado_estatisticas,
+      privado_historico: !!perfil.privado_historico,
+      privado_favoritos: !!perfil.privado_favoritos,
+      privado_listas: !!perfil.privado_listas,
+      compartilhar_nome: !!perfil.compartilhar_nome,
+      compartilhar_idade: !!perfil.compartilhar_idade,
+    })
+    setNomeEditavel(perfil.nome ?? '')
+    setIdadeEditavel(perfil.user_age != null ? String(perfil.user_age) : '')
+  }, [perfil])
+
+  // nome/user_age só eram preenchidos pelo fluxo de onboarding -- contas
+  // criadas antes dele (backfilled com onboarding_completo=true, ver
+  // migração 20260828010000_onboarding_e_privacidade.sql) nunca passam por
+  // ali, e mesmo quem passou pode querer editar depois. Esse é o único outro
+  // lugar que escreve esses dois campos.
+  async function salvarDadosPessoais() {
+    setDadosPessoaisMsg('')
+    const idadeNum = idadeEditavel === '' ? null : Number(idadeEditavel)
+    if (idadeEditavel !== '' && (!Number.isInteger(idadeNum) || idadeNum < 13 || idadeNum > 120)) {
+      setDadosPessoaisMsg('Informa uma idade válida.')
+      return
+    }
+
+    setSalvandoDadosPessoais(true)
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ nome: nomeEditavel.trim() || null, user_age: idadeNum })
+      .eq('id', user.id)
+    setSalvandoDadosPessoais(false)
+
+    if (error) {
+      console.error('[Configuracoes] Erro ao salvar dados pessoais:', error)
+      setDadosPessoaisMsg('Não deu pra salvar, tenta de novo.')
+      return
+    }
+
+    setDadosPessoaisMsg('Salvo!')
+    recarregarPerfil()
+    setTimeout(() => setDadosPessoaisMsg(''), 2500)
+  }
+
+  async function atualizarPrivacidade(campo, valor) {
+    const anterior = campo === 'perfil_privado' ? perfilPrivado : privacidadeSecoes[campo]
+
+    if (campo === 'perfil_privado') setPerfilPrivado(valor)
+    else setPrivacidadeSecoes((prev) => ({ ...prev, [campo]: valor }))
+
+    const { error } = await supabase.from('usuarios').update({ [campo]: valor }).eq('id', user.id)
+
+    if (error) {
+      console.error(`[Configuracoes] Erro ao salvar ${campo}:`, error)
+      if (campo === 'perfil_privado') setPerfilPrivado(anterior)
+      else setPrivacidadeSecoes((prev) => ({ ...prev, [campo]: anterior }))
+      return
+    }
+
+    recarregarPerfil()
+  }
 
   // Parser robusto de CSV para lidar com aspas e vírgulas em campos ISO/strings
   function parseCSV(texto) {
@@ -817,14 +910,86 @@ export default function Configuracoes() {
       <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
         <div>
           <div className="font-display font-medium text-sm text-ink">Perfil Privado</div>
-          <div className="text-xs text-muted">Apenas você poderá ver seu histórico</div>
+          <div className="text-xs text-muted">Ninguém além de você poderá ver seu perfil</div>
         </div>
         <input
           type="checkbox"
           checked={perfilPrivado}
-          onChange={(e) => setPerfilPrivado(e.target.checked)}
+          onChange={(e) => atualizarPrivacidade('perfil_privado', e.target.checked)}
           className="w-5 h-5 accent-amber rounded"
         />
+      </div>
+
+      {!perfilPrivado && (
+        <div className="mx-4 mt-3 bg-surface rounded-2xl border border-white/5 divide-y divide-white/5">
+          {SECOES_PRIVACIDADE.map(({ campo, titulo, descricao }) => (
+            <label key={campo} className="p-4 flex items-center justify-between cursor-pointer">
+              <div>
+                <div className="font-display font-medium text-sm text-ink">Ocultar {titulo}</div>
+                <div className="text-xs text-muted">{descricao}</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={privacidadeSecoes[campo]}
+                onChange={(e) => atualizarPrivacidade(campo, e.target.checked)}
+                className="w-5 h-5 accent-amber rounded"
+              />
+            </label>
+          ))}
+        </div>
+      )}
+
+      <SectionLabel>Dados Pessoais</SectionLabel>
+      <div className="mx-4 bg-surface rounded-2xl border border-white/5 divide-y divide-white/5">
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted font-mono">Nome</label>
+            <input
+              type="text"
+              placeholder="Nome (opcional)"
+              value={nomeEditavel}
+              onChange={(e) => setNomeEditavel(e.target.value)}
+              className="mt-1 w-full bg-surface2 border border-white/10 rounded-xl px-3 py-2 text-sm text-ink placeholder:text-muted"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted font-mono">Idade</label>
+            <input
+              type="number"
+              placeholder="Idade"
+              value={idadeEditavel}
+              onChange={(e) => setIdadeEditavel(e.target.value)}
+              min={13}
+              max={120}
+              className="mt-1 w-full bg-surface2 border border-white/10 rounded-xl px-3 py-2 text-sm text-ink placeholder:text-muted"
+            />
+          </div>
+          {dadosPessoaisMsg && <div className="text-xs font-mono text-amber">{dadosPessoaisMsg}</div>}
+          <button
+            onClick={salvarDadosPessoais}
+            disabled={salvandoDadosPessoais}
+            className="px-4 py-2 bg-amber text-bg rounded-xl text-xs font-display font-semibold disabled:opacity-60"
+          >
+            {salvandoDadosPessoais ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+        <div className="p-4 text-xs text-muted">
+          Escolha o que aparece no seu perfil público — o resto fica só com você.
+        </div>
+        {CAMPOS_DADOS_PESSOAIS.map(({ campo, titulo, descricao }) => (
+          <label key={campo} className="p-4 flex items-center justify-between cursor-pointer">
+            <div>
+              <div className="font-display font-medium text-sm text-ink">Compartilhar {titulo}</div>
+              <div className="text-xs text-muted">{descricao}</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={privacidadeSecoes[campo]}
+              onChange={(e) => atualizarPrivacidade(campo, e.target.checked)}
+              className="w-5 h-5 accent-amber rounded"
+            />
+          </label>
+        ))}
       </div>
 
       <SectionLabel>Importar Dados (TV Time ZIP)</SectionLabel>
