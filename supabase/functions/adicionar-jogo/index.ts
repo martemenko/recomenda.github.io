@@ -75,7 +75,7 @@ serve(async (req) => {
     if (!existente || forceUpdate) {
       const [jogo] = await igdbQuery(
         "games",
-        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.url,websites.type.type,external_games.url,external_games.uid,external_games.external_game_source.name; where id = ${Number(igdb_id)};`,
+        `fields name,summary,first_release_date,cover.image_id,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,websites.url,websites.type.type,external_games.url,external_games.uid,external_games.external_game_source.name,total_rating; where id = ${Number(igdb_id)};`,
       );
 
       if (!jogo) {
@@ -104,6 +104,7 @@ serve(async (req) => {
             sinopse: jogo.summary,
             genero: (jogo.genres ?? []).map((g: any) => g.name).join(", "),
             imagem,
+            nota_externa: jogo.total_rating ?? null,
           },
           { onConflict: "fonte,external_id" },
         )

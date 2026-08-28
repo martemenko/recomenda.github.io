@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Image as ImageIcon, Smile, X } from 'lucide-react'
+import { Image as ImageIcon, X } from 'lucide-react'
 import GifPicker from './GifPicker'
 
 export default function ComentarioComposer({ onEnviar, placeholder = 'Escreva um comentário...', autoFocus = false }) {
@@ -93,9 +93,9 @@ export default function ComentarioComposer({ onEnviar, placeholder = 'Escreva um
           <button
             onClick={() => setGifPickerAberto(true)}
             aria-label="Anexar GIF"
-            className="p-1.5 text-muted hover:text-ink rounded-lg"
+            className="px-1.5 h-[26px] flex items-center justify-center border border-current rounded-md text-muted hover:text-ink text-[10px] font-display font-bold tracking-tight"
           >
-            <Smile size={18} />
+            GIF
           </button>
         </div>
         <button
