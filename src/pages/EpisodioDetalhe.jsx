@@ -19,6 +19,7 @@ import SectionLabel from '../components/SectionLabel'
 import ActionSheet from '../components/ActionSheet'
 import ComentarioThread from '../components/ComentarioThread'
 import ComentarioComposer from '../components/ComentarioComposer'
+import VistoPorSeguidos from '../components/VistoPorSeguidos'
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w500'
 
@@ -632,6 +633,8 @@ export default function EpisodioDetalhe() {
           )}
           <ChevronRight size={16} className="text-muted flex-shrink-0" />
         </button>
+
+        <VistoPorSeguidos episodeId={Number(id)} />
 
         {/* Navegação Entre Episódios (Anterior / Próximo) */}
         {(episodioAnterior || proximoEpisodio) && (

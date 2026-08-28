@@ -99,6 +99,7 @@ serve(async (req) => {
             sinopse: detalhes.overview,
             genero: (detalhes.genres ?? []).map((g: any) => g.name).join(", "),
             imagem: detalhes.poster_path,
+            nota_externa: detalhes.vote_average ?? null,
           },
           { onConflict: "fonte,external_id" },
         )

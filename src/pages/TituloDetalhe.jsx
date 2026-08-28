@@ -21,6 +21,7 @@ import SubTabs from '../components/SubTabs'
 import ActionSheet from '../components/ActionSheet'
 import ComentarioThread from '../components/ComentarioThread'
 import ComentarioComposer from '../components/ComentarioComposer'
+import VistoPorSeguidos from '../components/VistoPorSeguidos'
 import ReviewShareCard from '../components/ReviewShareCard'
 import { POSTER_BASE, resolverUrlImagemGrande } from '../lib/image'
 
@@ -284,7 +285,7 @@ export default function TituloDetalhe() {
       tipo === 'game'
         ? Promise.resolve(null)
         : callFunction('get-translate-title', { titulo_id: Number(id), idioma, media_type: tipo }).catch(() => null),
-      supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes, external_id').eq('id', id).maybeSingle().then(res => res.data),
+      supabase.from('titulo').select('nome, sinopse, imagem, genero, media_rating, total_avaliacoes, external_id, fonte, nota_externa').eq('id', id).maybeSingle().then(res => res.data),
       tipo === 'tv'
         ? supabase.from('elenco_serie').select('personagem, ator(name, image)').eq('titulo_id', id).then(res => res.data ?? [])
         : tipo === 'movie'
@@ -742,6 +743,13 @@ export default function TituloDetalhe() {
               <Star size={12} fill="currentColor" /> {titulo.media_rating} ({titulo.total_avaliacoes})
             </span>
           )}
+          {titulo.nota_externa != null && (
+            <span className="flex items-center gap-1 text-amber">
+              <Star size={12} fill="currentColor" />
+              {titulo.fonte === 'igdb' ? 'IGDB' : 'TMDB'}{' '}
+              {titulo.fonte === 'igdb' ? Math.round(titulo.nota_externa) : Number(titulo.nota_externa).toFixed(1)}
+            </span>
+          )}
         </div>
         <p className="text-sm text-ink mt-3 leading-relaxed">{titulo.sinopse}</p>
 
@@ -950,6 +958,7 @@ export default function TituloDetalhe() {
                 )}
                 <ChevronRight size={16} className="text-muted flex-shrink-0" />
               </button>
+              <VistoPorSeguidos tituloId={Number(id)} tipo={mediaType === 'game' ? 'jogou' : 'assistiu'} />
             </div>
           )}
 
