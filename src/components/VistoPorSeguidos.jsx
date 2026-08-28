@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import UserAvatar from './UserAvatar'
+import SectionLabel from './SectionLabel'
 
-// "Fulano e mais 2 assistiram/jogaram isso" -- só considera quem o usuário
-// logado segue, lendo user_item_publico/watched_episode_publico (views que
-// já respeitam a privacidade de histórico de cada um, ver migração
+// "Quem mais viu isso" -- só considera quem o usuário logado segue, lendo
+// user_item_publico/watched_episode_publico (views que já respeitam a
+// privacidade de histórico de cada um -- só aparece aqui quem realmente
+// permitiu compartilhar o próprio histórico, ver migração
 // 20260828030000_privacidade_por_excecao.sql) em vez das tabelas base.
 export default function VistoPorSeguidos({ tituloId, episodeId, tipo = 'assistiu' }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [pessoas, setPessoas] = useState([])
+  const [listaAberta, setListaAberta] = useState(false)
 
   useEffect(() => {
     if (!user) {
@@ -50,35 +54,76 @@ export default function VistoPorSeguidos({ tituloId, episodeId, tipo = 'assistiu
     setPessoas(perfis ?? [])
   }
 
-  if (!user || pessoas.length === 0) return null
-
-  const nomes = pessoas.map((p) => `@${p.username}`)
-  const verboSingular = tipo === 'jogou' ? 'jogou' : 'assistiu'
-  const verboPlural = tipo === 'jogou' ? 'jogaram' : 'assistiram'
-
-  let texto
-  if (nomes.length === 1) {
-    texto = `${nomes[0]} ${verboSingular} isso`
-  } else if (nomes.length === 2) {
-    texto = `${nomes[0]} e ${nomes[1]} ${verboPlural} isso`
-  } else {
-    texto = `${nomes[0]}, ${nomes[1]} e mais ${nomes.length - 2} ${verboPlural} isso`
+  function irParaPerfil(id) {
+    setListaAberta(false)
+    navigate(`/usuario/${id}`)
   }
 
+  if (!user || pessoas.length === 0) return null
+
+  const verboSingular = tipo === 'jogou' ? 'jogou' : 'assistiu'
+  const verboPlural = tipo === 'jogou' ? 'jogaram' : 'assistiram'
+  const tituloSecao = tipo === 'jogou' ? 'Quem mais jogou isso' : 'Quem mais viu isso'
+  const restante = pessoas.length - 2
+
   return (
-    <div className="mt-3 flex items-center gap-2.5">
-      <div className="flex -space-x-2 flex-shrink-0">
-        {pessoas.slice(0, 5).map((p) => (
-          <button
-            key={p.id}
-            onClick={() => navigate(`/usuario/${p.id}`)}
-            className="rounded-full border-2 border-bg overflow-hidden"
-          >
-            <UserAvatar fotoPerfil={p.foto_perfil} username={p.username} size={24} />
-          </button>
-        ))}
+    <div className="mt-4">
+      <SectionLabel className="!px-0 !pt-0 !pb-1">{tituloSecao}</SectionLabel>
+
+      <div className="flex items-center gap-2.5">
+        <div className="flex -space-x-2 flex-shrink-0">
+          {pessoas.slice(0, 5).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => irParaPerfil(p.id)}
+              className="rounded-full border-2 border-bg overflow-hidden"
+            >
+              <UserAvatar fotoPerfil={p.foto_perfil} username={p.username} size={24} />
+            </button>
+          ))}
+        </div>
+
+        <span className="text-xs text-muted truncate">
+          {pessoas.length === 1 && <>@{pessoas[0].username} {verboSingular} isso</>}
+          {pessoas.length === 2 && (
+            <>
+              @{pessoas[0].username} e @{pessoas[1].username} {verboPlural} isso
+            </>
+          )}
+          {pessoas.length > 2 && (
+            <>
+              @{pessoas[0].username}, @{pessoas[1].username} e{' '}
+              <button onClick={() => setListaAberta(true)} className="text-ink font-medium underline underline-offset-2">
+                mais {restante}
+              </button>{' '}
+              {verboPlural} isso
+            </>
+          )}
+        </span>
       </div>
-      <span className="text-xs text-muted truncate">{texto}</span>
+
+      {listaAberta && (
+        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
+            <button onClick={() => setListaAberta(false)} className="text-muted">
+              <ArrowLeft size={20} />
+            </button>
+            <div className="text-base text-ink font-display font-semibold">{tituloSecao}</div>
+          </div>
+          <div className="flex-1 overflow-y-auto scroll-area px-4 py-2">
+            {pessoas.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => irParaPerfil(p.id)}
+                className="w-full flex items-center gap-3 py-2.5 border-b border-white/5 text-left"
+              >
+                <UserAvatar fotoPerfil={p.foto_perfil} username={p.username} size={40} />
+                <span className="text-sm text-ink font-display font-medium">@{p.username}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
