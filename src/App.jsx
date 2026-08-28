@@ -5,6 +5,7 @@ import MobileShell from './components/MobileShell'
 import BottomTabBar from './components/BottomTabBar'
 
 const Login = lazy(() => import('./pages/Login'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
 const ContaConfirmada = lazy(() => import('./pages/ContaConfirmada'))
 const SeriesPage = lazy(() => import('./pages/SeriesPage'))
 const FilmesPage = lazy(() => import('./pages/FilmesPage'))
@@ -27,7 +28,7 @@ function LoadingFallback() {
 }
 
 function RotasPrivadas() {
-  const { session } = useAuth()
+  const { session, perfil } = useAuth()
 
   const confirmado = new URLSearchParams(window.location.search).get('confirmado') === '1'
   if (confirmado) {
@@ -52,6 +53,22 @@ function RotasPrivadas() {
       <MobileShell>
         <Suspense fallback={<LoadingFallback />}>
           <Login />
+        </Suspense>
+      </MobileShell>
+    )
+  }
+  if (perfil === null) {
+    return (
+      <MobileShell>
+        <LoadingFallback />
+      </MobileShell>
+    )
+  }
+  if (perfil.onboarding_completo === false) {
+    return (
+      <MobileShell>
+        <Suspense fallback={<LoadingFallback />}>
+          <Onboarding />
         </Suspense>
       </MobileShell>
     )

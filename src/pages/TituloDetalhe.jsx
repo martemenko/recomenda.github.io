@@ -779,20 +779,6 @@ export default function TituloDetalhe() {
             {mediaType === 'game' ? 'Jogado' : 'Assistido'} · {contagemTitulo}x
           </div>
         )}
-
-        {(mediaType === 'movie' || mediaType === 'game') && (
-          <button
-            onClick={tentarAbrirComentarios}
-            className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 mt-3 hover:border-white/20 transition-colors"
-          >
-            <MessageSquare size={18} className="text-teal flex-shrink-0" />
-            <span className="flex-1 text-left text-sm font-display font-medium text-ink">Comentários</span>
-            {contagemComentarios > 0 && (
-              <span className="text-xs font-mono text-teal bg-teal/10 px-2 py-0.5 rounded-full">{contagemComentarios}</span>
-            )}
-            <ChevronRight size={16} className="text-muted flex-shrink-0" />
-          </button>
-        )}
       </div>
 
       {mediaType === 'tv' && (
@@ -944,6 +930,22 @@ export default function TituloDetalhe() {
                 ))}
               </div>
             </>
+          )}
+
+          {(mediaType === 'movie' || mediaType === 'game') && (
+            <div className="px-4">
+              <button
+                onClick={tentarAbrirComentarios}
+                className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 mb-4 hover:border-white/20 transition-colors"
+              >
+                <MessageSquare size={18} className="text-teal flex-shrink-0" />
+                <span className="flex-1 text-left text-sm font-display font-medium text-ink">Comentários</span>
+                {contagemComentarios > 0 && (
+                  <span className="text-xs font-mono text-teal bg-teal/10 px-2 py-0.5 rounded-full">{contagemComentarios}</span>
+                )}
+                <ChevronRight size={16} className="text-muted flex-shrink-0" />
+              </button>
+            </div>
           )}
 
           {(mediaType === 'tv' || mediaType === 'movie') && provedores.length > 0 && (
