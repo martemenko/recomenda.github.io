@@ -174,11 +174,7 @@ export default function Explorar() {
           </>
         ) : (
           <>
-            <SectionLabel>Popular</SectionLabel>
-            <p className="px-4 text-xs text-muted -mt-1 mb-2">
-              Com base em quantas pessoas marcaram como visto, jogado ou querem ver (inclui quem
-              assistiu episódios recentes), sem identificar quem.
-            </p>
+            <SectionLabel>Popular no Recomenda</SectionLabel>
             <div className="flex gap-3 px-4 pb-6 overflow-x-auto scroll-area">
               {trending.map((t) => (
                 <div key={t.titulo_id} className="flex-shrink-0 w-28">
