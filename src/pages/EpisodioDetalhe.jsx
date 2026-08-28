@@ -521,18 +521,6 @@ export default function EpisodioDetalhe() {
           )}
         </button>
 
-        <button
-          onClick={tentarAbrirComentarios}
-          className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 hover:border-white/20 transition-colors"
-        >
-          <MessageSquare size={18} className="text-teal flex-shrink-0" />
-          <span className="flex-1 text-left text-sm font-display font-medium text-ink">Comentários</span>
-          {contagemComentarios > 0 && (
-            <span className="text-xs font-mono text-teal bg-teal/10 px-2 py-0.5 rounded-full">{contagemComentarios}</span>
-          )}
-          <ChevronRight size={16} className="text-muted flex-shrink-0" />
-        </button>
-
         {/* Sinopse do Episódio */}
         <div className="bg-surface/70 border border-white/5 rounded-2xl p-4 pt-3">
           <SectionLabel className="!px-0 !pt-0 mb-1">Sinopse</SectionLabel>
@@ -627,6 +615,18 @@ export default function EpisodioDetalhe() {
             </div>
           )}
         </div>
+
+        <button
+          onClick={tentarAbrirComentarios}
+          className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 hover:border-white/20 transition-colors"
+        >
+          <MessageSquare size={18} className="text-teal flex-shrink-0" />
+          <span className="flex-1 text-left text-sm font-display font-medium text-ink">Comentários</span>
+          {contagemComentarios > 0 && (
+            <span className="text-xs font-mono text-teal bg-teal/10 px-2 py-0.5 rounded-full">{contagemComentarios}</span>
+          )}
+          <ChevronRight size={16} className="text-muted flex-shrink-0" />
+        </button>
 
         {/* Navegação Entre Episódios (Anterior / Próximo) */}
         {(episodioAnterior || proximoEpisodio) && (
