@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import { buscarEstatisticasUsuario } from '../lib/statsUsuario'
 import UserAvatar from '../components/UserAvatar'
+import PosterCard from '../components/PosterCard'
 import SectionLabel from '../components/SectionLabel'
+
+// Busca os títulos (nome/imagem) de uma lista de ids em uma única query --
+// mesmo padrão de outras telas do app (Perfil.jsx, statsUsuario.js).
+async function buscarTitulosPorIds(ids) {
+  if (!ids || ids.length === 0) return new Map()
+  const { data } = await supabase.from('titulo').select('id, nome, imagem').in('id', ids)
+  return new Map((data ?? []).map((t) => [t.id, t]))
+}
 
 export default function PerfilPublico() {
   const { userId } = useParams()
@@ -15,6 +24,9 @@ export default function PerfilPublico() {
   const [perfilAlvo, setPerfilAlvo] = useState(null)
   const [naoEncontrado, setNaoEncontrado] = useState(false)
   const [stats, setStats] = useState(null)
+  const [historico, setHistorico] = useState(null) // null = seção oculta; [] = vazia
+  const [favoritos, setFavoritos] = useState(null)
+  const [listas, setListas] = useState(null)
   const [seguindo, setSeguindo] = useState(false)
   const [contagemSeguidores, setContagemSeguidores] = useState(0)
   const [contagemSeguindo, setContagemSeguindo] = useState(0)
@@ -28,7 +40,9 @@ export default function PerfilPublico() {
   async function carregar() {
     const { data: perfil } = await supabase
       .from('usuarios_publico')
-      .select('id, username, foto_perfil, perfil_privado')
+      .select(
+        'id, username, foto_perfil, perfil_privado, nome, user_age, privado_estatisticas, privado_historico, privado_favoritos, privado_listas'
+      )
       .eq('id', userId)
       .maybeSingle()
 
@@ -56,6 +70,81 @@ export default function PerfilPublico() {
     setContagemSeguidores(seguidoresRes.count ?? 0)
     setContagemSeguindo(seguindoRes.count ?? 0)
     setSeguindo(!!minhaRelacaoRes.data)
+
+    await Promise.all([
+      carregarHistorico(userId, souEuAgora, perfil.privado_historico),
+      carregarFavoritos(userId, souEuAgora, perfil.privado_favoritos),
+      carregarListas(userId, souEuAgora, perfil.privado_listas),
+    ])
+  }
+
+  // O dono sempre lê a tabela base (RLS já garante que só ele acessa a
+  // própria linha); qualquer outra pessoa lê a view *_publico, que já
+  // devolve vazio quando a seção está oculta -- a checagem de `oculta` aqui é
+  // só pra distinguir "oculta" de "vazia" na UI (ver migração
+  // 20260828010000_onboarding_e_privacidade.sql).
+  async function carregarHistorico(alvoId, ehDono, oculta) {
+    if (!ehDono && oculta) {
+      setHistorico(null)
+      return
+    }
+    const { data } = await supabase
+      .from(ehDono ? 'user_item' : 'user_item_publico')
+      .select('titulo_id, status_atualizado_em')
+      .eq('user_id', alvoId)
+      .eq('status', 'visto')
+      .order('status_atualizado_em', { ascending: false })
+      .limit(12)
+
+    const titulos = await buscarTitulosPorIds((data ?? []).map((d) => d.titulo_id))
+    setHistorico((data ?? []).map((d) => ({ id: d.titulo_id, ...titulos.get(d.titulo_id) })).filter((t) => t.nome))
+  }
+
+  async function carregarFavoritos(alvoId, ehDono, oculta) {
+    if (!ehDono && oculta) {
+      setFavoritos(null)
+      return
+    }
+    const { data } = await supabase
+      .from(ehDono ? 'user_item' : 'user_item_publico')
+      .select('titulo_id, added_at')
+      .eq('user_id', alvoId)
+      .eq('favorito', true)
+      .order('added_at', { ascending: false })
+      .limit(12)
+
+    const titulos = await buscarTitulosPorIds((data ?? []).map((d) => d.titulo_id))
+    setFavoritos((data ?? []).map((d) => ({ id: d.titulo_id, ...titulos.get(d.titulo_id) })).filter((t) => t.nome))
+  }
+
+  async function carregarListas(alvoId, ehDono, oculta) {
+    if (!ehDono && oculta) {
+      setListas(null)
+      return
+    }
+    const { data: listasData } = await supabase
+      .from(ehDono ? 'lista' : 'lista_publico')
+      .select('id, nome')
+      .eq('user_id', alvoId)
+      .order('created_at', { ascending: false })
+
+    const listaIds = (listasData ?? []).map((l) => l.id)
+    if (listaIds.length === 0) {
+      setListas([])
+      return
+    }
+
+    const { data: itensData } = await supabase
+      .from(ehDono ? 'lista_item' : 'lista_item_publico')
+      .select('lista_id')
+      .in('lista_id', listaIds)
+
+    const contagemPorLista = new Map()
+    for (const item of itensData ?? []) {
+      contagemPorLista.set(item.lista_id, (contagemPorLista.get(item.lista_id) ?? 0) + 1)
+    }
+
+    setListas(listasData.map((l) => ({ ...l, contagem: contagemPorLista.get(l.id) ?? 0 })))
   }
 
   async function alternarSeguir() {
@@ -160,6 +249,11 @@ export default function PerfilPublico() {
       <div className="flex flex-col items-center pt-6 px-4">
         <UserAvatar fotoPerfil={perfilAlvo.foto_perfil} username={perfilAlvo.username} size={96} />
         <div className="text-lg font-display font-semibold text-ink mt-3">{perfilAlvo.username}</div>
+        {(perfilAlvo.nome || perfilAlvo.user_age) && (
+          <div className="text-xs text-muted mt-0.5">
+            {[perfilAlvo.nome, perfilAlvo.user_age && `${perfilAlvo.user_age} anos`].filter(Boolean).join(' · ')}
+          </div>
+        )}
 
         <div className="flex items-center gap-6 mt-3">
           <button onClick={() => abrirLista('seguidores')} className="text-center">
@@ -187,13 +281,36 @@ export default function PerfilPublico() {
       </div>
 
       <SectionLabel>Estatísticas</SectionLabel>
-      {stats && (
+      <OcultaParaOutrosAviso souEu={souEu} oculto={perfilAlvo.privado_estatisticas} />
+      {stats ? (
         <div className="grid grid-cols-2 gap-3 px-4 mb-2">
           <StatCard label="Tempo vendo TV" valor={stats.tempoTv} />
           <StatCard label="Episódios assistidos" valor={stats.episodios} />
           <StatCard label="Tempo vendo filmes" valor={stats.tempoFilme} />
           <StatCard label="Filmes assistidos" valor={stats.filmes} />
           <StatCard label="Jogos jogados" valor={stats.jogos} />
+        </div>
+      ) : (
+        <SecaoOculta souEu={souEu} />
+      )}
+
+      <Prateleira titulo="Favoritos" itens={favoritos} souEu={souEu} oculto={perfilAlvo.privado_favoritos} navigate={navigate} />
+      <Prateleira titulo="Histórico" itens={historico} souEu={souEu} oculto={perfilAlvo.privado_historico} navigate={navigate} />
+
+      <SectionLabel>Listas</SectionLabel>
+      <OcultaParaOutrosAviso souEu={souEu} oculto={perfilAlvo.privado_listas} />
+      {listas === null ? (
+        <SecaoOculta souEu={souEu} />
+      ) : listas.length === 0 ? (
+        <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
+      ) : (
+        <div className="px-4 pb-2 space-y-2">
+          {listas.map((l) => (
+            <div key={l.id} className="flex items-center justify-between bg-surface border border-white/5 rounded-xl px-3.5 py-3">
+              <span className="text-sm font-display font-medium text-ink">{l.nome}</span>
+              <span className="text-xs text-muted font-mono">{l.contagem} {l.contagem === 1 ? 'item' : 'itens'}</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -228,6 +345,52 @@ export default function PerfilPublico() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function Prateleira({ titulo, itens, souEu, oculto, navigate }) {
+  return (
+    <div className="mb-1">
+      <SectionLabel>{titulo}</SectionLabel>
+      <OcultaParaOutrosAviso souEu={souEu} oculto={oculto} />
+      {itens === null ? (
+        <SecaoOculta souEu={souEu} />
+      ) : itens.length === 0 ? (
+        <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
+      ) : (
+        <div className="flex flex-nowrap items-start gap-3 px-4 pb-3 overflow-x-auto scroll-area">
+          {itens.map((t) => (
+            <div key={t.id} className="flex-shrink-0 w-28">
+              <PosterCard imagem={t.imagem} nome={t.nome} onClick={() => navigate(`/titulo/${t.id}`)} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Mostrada só pro dono, quando ele mesmo está vendo os próprios dados
+// (por isso a seção não é null) mas marcou a seção como oculta pra outras
+// pessoas em Configurações -- um lembrete de que essa vitrine é exclusiva.
+function OcultaParaOutrosAviso({ souEu, oculto }) {
+  if (!souEu || !oculto) return null
+  return (
+    <div className="px-4 pb-2 -mt-1 flex items-center gap-1.5 text-muted text-[11px] font-mono">
+      <Lock size={11} />
+      Só você vê esta seção (oculta pra outras pessoas em Configurações)
+    </div>
+  )
+}
+
+// Mostrada pra quem não é dono quando a seção está mesmo escondida (itens/stats/listas === null).
+function SecaoOculta({ souEu }) {
+  if (souEu) return null
+  return (
+    <div className="px-4 pb-3 flex items-center gap-2 text-muted text-xs font-mono">
+      <Lock size={13} />
+      Esta seção é privada.
     </div>
   )
 }

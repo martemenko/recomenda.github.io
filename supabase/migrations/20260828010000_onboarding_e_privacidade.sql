@@ -17,7 +17,10 @@ ALTER TABLE public.usuarios
 UPDATE public.usuarios SET onboarding_completo = true;
 
 -- usuarios_publico ganha nome/idade, mas só quando o dono optou por
--- compartilhar (dados pessoais); mantém as colunas que já existiam.
+-- compartilhar (dados pessoais); mantém as colunas que já existiam. As 4
+-- flags de seção também são expostas (são só booleanos, não dado sensível
+-- em si) para que a UI do perfil público consiga distinguir "seção oculta"
+-- de "seção vazia" em vez de simplesmente omitir a seção sem explicação.
 DROP VIEW IF EXISTS public.usuarios_publico;
 
 CREATE VIEW public.usuarios_publico AS
@@ -26,6 +29,10 @@ CREATE VIEW public.usuarios_publico AS
     username,
     foto_perfil,
     perfil_privado,
+    privado_estatisticas,
+    privado_historico,
+    privado_favoritos,
+    privado_listas,
     CASE WHEN compartilhar_nome THEN nome ELSE NULL END AS nome,
     CASE WHEN compartilhar_idade THEN user_age ELSE NULL END AS user_age
   FROM public.usuarios;
@@ -70,6 +77,18 @@ CREATE VIEW public.lista_publico AS
   WHERE u.perfil_privado = false AND u.privado_listas = false;
 
 GRANT SELECT ON public.lista_publico TO anon, authenticated;
+
+-- lista_item não tem (nunca teve) policy de leitura pública -- só o dono
+-- pode ler via "Usuário gerencia itens das próprias listas" (FOR ALL). Essa
+-- view reaproveita o filtro de privacidade de lista_publico via join, sem
+-- precisar mexer na policy da tabela base (mesmo truque de bypass de RLS por
+-- dono da view usado em todas as views acima).
+CREATE VIEW public.lista_item_publico AS
+  SELECT li.lista_id, li.titulo_id, li.added_at
+  FROM public.lista_item li
+  JOIN public.lista_publico lp ON lp.id = li.lista_id;
+
+GRANT SELECT ON public.lista_item_publico TO anon, authenticated;
 
 -- Estatísticas (tempo assistido, contagens) são um agregado sobre as mesmas
 -- tabelas de histórico, mas com uma flag de privacidade PRÓPRIA

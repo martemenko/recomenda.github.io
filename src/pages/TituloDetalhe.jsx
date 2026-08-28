@@ -933,7 +933,7 @@ export default function TituloDetalhe() {
           )}
 
           {(mediaType === 'movie' || mediaType === 'game') && (
-            <div className="px-4">
+            <div className="px-4 mt-4">
               <button
                 onClick={tentarAbrirComentarios}
                 className="w-full flex items-center gap-3 bg-surface border border-white/10 rounded-2xl p-3.5 mb-4 hover:border-white/20 transition-colors"
