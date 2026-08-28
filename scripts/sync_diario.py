@@ -10,6 +10,19 @@ adicionar-jogo (chamada de sistema, sem usuário) pra jogo, já que a IGDB não 
 endpoint de provedores separado do resto do jogo. Isso substitui refazer essa ingestão a
 cada visita de usuário na tela do título, que era caro à toa.
 
+nota_externa (TMDB vote_average / IGDB total_rating, ver migração
+20260828050000_nota_externa.sql) segue regras diferentes por fonte:
+- Jogos (IGDB): já vem de graça no loop de loja acima (adicionar-jogo reingere o jogo
+  inteiro todo dia, então a nota atualiza junto sem custo extra de chamada).
+- Séries/filmes (TMDB): só atualiza pra quem está no re-sync completo de hoje
+  (atualizar_serie/atualizar_filme, que já buscam `detalhes` mesmo assim -- sem
+  chamada extra). TMDB não tem um endpoint leve só de nota como tem de
+  watch/providers, então NÃO replicamos aqui o padrão "resto do catálogo todo dia"
+  usado pra provedores -- isso significaria 1 chamada de detalhes por título do
+  catálogo, todo santo dia, só pra um campo. Título fora do changes de hoje fica com
+  a nota de quando foi ingerido/backfilled (ver scripts/backfill_nota_externa.py)
+  até a TMDB reportar alguma mudança nele ou até rodar o backfill de novo manualmente.
+
 Rodado 1x/dia pelo GitHub Actions (.github/workflows/sync-diario.yml).
 Variáveis de ambiente esperadas: TMDB_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 """
@@ -117,6 +130,7 @@ def atualizar_serie(tmdb_id, titulo_id):
         "sinopse": detalhes.get("overview"),
         "genero": ", ".join(g["name"] for g in detalhes.get("genres", [])),
         "imagem": detalhes.get("poster_path"),
+        "nota_externa": detalhes.get("vote_average"),
     }, on_conflict="fonte,external_id").execute()
 
     supabase.table("series").upsert({
@@ -159,6 +173,7 @@ def atualizar_filme(tmdb_id, titulo_id):
         "sinopse": detalhes.get("overview"),
         "genero": ", ".join(g["name"] for g in detalhes.get("genres", [])),
         "imagem": detalhes.get("poster_path"),
+        "nota_externa": detalhes.get("vote_average"),
     }, on_conflict="fonte,external_id").execute()
 
     supabase.table("movies").upsert({
