@@ -732,24 +732,41 @@ export default function TituloDetalhe() {
 
       <div className="-mt-16 relative">
         {titulo.imagem && <img src={resolverUrlImagemGrande(titulo.imagem)} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
+
+        {(titulo.media_rating || titulo.nota_externa != null) && (
+          <div className="absolute left-3 bottom-3 flex items-center gap-2">
+            {titulo.media_rating && (
+              <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-sm rounded-full pl-1 pr-2.5 py-1">
+                <span className="bg-amber text-bg text-[8px] font-black uppercase rounded-full px-1.5 py-0.5 leading-none">
+                  Recomenda
+                </span>
+                <span className="text-white text-xs font-display font-bold">{titulo.media_rating}</span>
+              </div>
+            )}
+            {titulo.nota_externa != null && (
+              <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-sm rounded-full pl-1 pr-2.5 py-1">
+                <span
+                  className={`text-white text-[8px] font-black uppercase rounded-full px-1.5 py-0.5 leading-none ${
+                    titulo.fonte === 'igdb' ? 'bg-[#9147ff]' : 'bg-[#01b4e4]'
+                  }`}
+                >
+                  {titulo.fonte === 'igdb' ? 'IGDB' : 'TMDB'}
+                </span>
+                <span className="text-white text-xs font-display font-bold">
+                  {titulo.fonte === 'igdb'
+                    ? Math.round(titulo.nota_externa)
+                    : Number(titulo.nota_externa).toFixed(1)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-3">
         <h1 className="font-display font-semibold text-xl text-ink">{titulo.nome}</h1>
         <div className="flex items-center gap-2 mt-1 text-xs text-muted font-mono">
           <span>{titulo.genero}</span>
-          {titulo.media_rating && (
-            <span className="flex items-center gap-1 text-teal">
-              <Star size={12} fill="currentColor" /> {titulo.media_rating} ({titulo.total_avaliacoes})
-            </span>
-          )}
-          {titulo.nota_externa != null && (
-            <span className="flex items-center gap-1 text-amber">
-              <Star size={12} fill="currentColor" />
-              {titulo.fonte === 'igdb' ? 'IGDB' : 'TMDB'}{' '}
-              {titulo.fonte === 'igdb' ? Math.round(titulo.nota_externa) : Number(titulo.nota_externa).toFixed(1)}
-            </span>
-          )}
         </div>
         <p className="text-sm text-ink mt-3 leading-relaxed">{titulo.sinopse}</p>
 
@@ -959,6 +976,12 @@ export default function TituloDetalhe() {
                 <ChevronRight size={16} className="text-muted flex-shrink-0" />
               </button>
               <VistoPorSeguidos tituloId={Number(id)} tipo={mediaType === 'game' ? 'jogou' : 'assistiu'} />
+            </div>
+          )}
+
+          {mediaType === 'tv' && (
+            <div className="px-4 mt-4">
+              <VistoPorSeguidos tituloId={Number(id)} tipo="assistiu" />
             </div>
           )}
 
