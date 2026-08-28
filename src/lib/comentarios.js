@@ -113,15 +113,25 @@ export async function buscarContagemComentarios({ tituloId, episodeId }) {
   return count ?? 0
 }
 
-export async function postarComentario({ userId, texto, tituloId, episodeId, threadId = null }) {
+export async function postarComentario({
+  userId,
+  texto,
+  tituloId,
+  episodeId,
+  threadId = null,
+  imagemUrl = null,
+  gifUrl = null,
+}) {
   const { data, error } = await supabase
     .from('comentario')
     .insert({
       user_id: userId,
-      texto,
+      texto: texto?.trim() || null,
       thread_id: threadId,
       titulo_id: tituloId ?? null,
       episode_id: episodeId ?? null,
+      imagem_url: imagemUrl,
+      gif_url: gifUrl,
     })
     .select('*')
     .single()
