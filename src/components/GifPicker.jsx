@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Search } from 'lucide-react'
 import { callFunction } from '../lib/supabaseClient'
+import useDialogA11y from '../lib/useDialogA11y'
 
 const DEBOUNCE_MS = 400
 
@@ -12,6 +13,9 @@ export default function GifPicker({ onEscolher, onFechar }) {
   const [resultados, setResultados] = useState([])
   const [carregando, setCarregando] = useState(true)
   const debounceRef = useRef(null)
+  const painelRef = useRef(null)
+
+  useDialogA11y({ open: true, onClose: onFechar, containerRef: painelRef })
 
   useEffect(() => {
     buscar(query)
@@ -33,11 +37,19 @@ export default function GifPicker({ onEscolher, onFechar }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-bg/95 backdrop-blur-sm z-[60] flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+    <div
+      ref={painelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Buscar GIF"
+      className="fixed inset-0 bg-bg/95 backdrop-blur-sm z-[60] flex flex-col max-w-[480px] mx-auto w-full left-0 right-0"
+    >
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
         <div className="flex-1 flex items-center gap-2 bg-surface2 border border-white/10 rounded-xl px-3 py-2">
           <Search size={16} className="text-muted flex-shrink-0" />
+          <label className="sr-only" htmlFor="gif-picker-busca">Buscar GIF</label>
           <input
+            id="gif-picker-busca"
             type="text"
             autoFocus
             value={query}
@@ -46,7 +58,7 @@ export default function GifPicker({ onEscolher, onFechar }) {
             className="flex-1 min-w-0 bg-transparent text-sm text-ink placeholder:text-muted focus:outline-none"
           />
         </div>
-        <button onClick={onFechar} className="text-muted flex-shrink-0">
+        <button onClick={onFechar} aria-label="Fechar" className="text-muted flex-shrink-0">
           <X size={20} />
         </button>
       </div>

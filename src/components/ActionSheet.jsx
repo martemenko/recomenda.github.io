@@ -1,3 +1,6 @@
+import { useRef } from 'react'
+import useDialogA11y from '../lib/useDialogA11y'
+
 const TONE_CLASSES = {
   default: 'bg-surface2 text-ink hover:bg-white/5',
   primary: 'bg-teal/15 text-teal hover:bg-teal/25',
@@ -7,15 +10,24 @@ const TONE_CLASSES = {
 // Bottom-sheet genérico: overlay + lista de opções + "Cancelar". Extraído do menu
 // "Gerenciar série" que já existia só dentro de TituloDetalhe.jsx.
 export default function ActionSheet({ open, title, options, onClose }) {
+  const painelRef = useRef(null)
+  useDialogA11y({ open, onClose, containerRef: painelRef })
+
   if (!open) return null
+
+  const tituloId = title ? 'action-sheet-titulo' : undefined
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end justify-center z-50" onClick={onClose}>
       <div
+        ref={painelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={tituloId}
         className="bg-surface border border-white/10 rounded-t-2xl p-4 w-full max-w-[480px]"
         onClick={(e) => e.stopPropagation()}
       >
-        {title && <div className="text-xs text-muted font-mono uppercase mb-3 px-1">{title}</div>}
+        {title && <div id={tituloId} className="text-xs text-muted font-mono uppercase mb-3 px-1">{title}</div>}
         <div className="flex flex-col gap-2">
           {options.map((opt, i) => (
             <button

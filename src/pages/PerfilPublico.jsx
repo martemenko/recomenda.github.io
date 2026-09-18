@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
@@ -7,6 +7,7 @@ import { buscarEstatisticasUsuario } from '../lib/statsUsuario'
 import UserAvatar from '../components/UserAvatar'
 import PosterCard from '../components/PosterCard'
 import SectionLabel from '../components/SectionLabel'
+import useDialogA11y from '../lib/useDialogA11y'
 
 // Busca os títulos (nome/imagem) de uma lista de ids em uma única query --
 // mesmo padrão de outras telas do app (Perfil.jsx, statsUsuario.js).
@@ -32,6 +33,8 @@ export default function PerfilPublico() {
   const [contagemSeguindo, setContagemSeguindo] = useState(0)
   const [listaAberta, setListaAberta] = useState(null) // 'seguidores' | 'seguindo' | null
   const [pessoasLista, setPessoasLista] = useState([])
+  const listaAbertaPainelRef = useRef(null)
+  useDialogA11y({ open: !!listaAberta, onClose: () => setListaAberta(null), containerRef: listaAbertaPainelRef })
 
   useEffect(() => {
     carregar()
@@ -311,12 +314,18 @@ export default function PerfilPublico() {
       )}
 
       {listaAberta && (
-        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+        <div
+          ref={listaAbertaPainelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="perfil-publico-lista-titulo"
+          className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0"
+        >
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
-            <button onClick={() => setListaAberta(null)} className="text-muted">
+            <button onClick={() => setListaAberta(null)} aria-label="Voltar" className="text-muted">
               <ArrowLeft size={20} />
             </button>
-            <div className="text-base text-ink font-display font-semibold">
+            <div id="perfil-publico-lista-titulo" className="text-base text-ink font-display font-semibold">
               {listaAberta === 'seguidores' ? 'Seguidores' : 'Seguindo'}
             </div>
           </div>

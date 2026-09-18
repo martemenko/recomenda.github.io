@@ -8,6 +8,7 @@ import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
+import { SkeletonPosterGrid } from '../components/SkeletonShapes'
 
 const GENEROS = [
   { id: null, nome: 'Todos' },
@@ -117,22 +118,27 @@ export default function FilmesPage() {
           <>
             {/* Rótulo alterado de "Quero ver" para "Seguindo" */}
             <SectionLabel>Seguindo</SectionLabel>
-            {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
-            {!carregando && meusFilmes.length === 0 && (
-              <div className="px-4 py-6 text-muted text-sm font-mono text-center">
-                Nenhum filme seguido ainda. Busque algo em Explorar.
-              </div>
+            {carregando ? (
+              <SkeletonPosterGrid count={9} />
+            ) : (
+              <>
+                {meusFilmes.length === 0 && (
+                  <div className="px-4 py-6 text-muted text-sm font-mono text-center">
+                    Nenhum filme seguido ainda. Busque algo em Explorar.
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3 px-4 pb-6">
+                  {meusFilmes.map((f) => (
+                    <PosterCard
+                      key={f.titulo_id}
+                      imagem={f.titulo.imagem}
+                      nome={f.titulo.nome}
+                      onClick={() => navigate(`/titulo/${f.titulo_id}?tipo=movie`)} // Garante o envio do tipo movie
+                    />
+                  ))}
+                </div>
+              </>
             )}
-            <div className="grid grid-cols-3 gap-3 px-4 pb-6">
-              {meusFilmes.map((f) => (
-                <PosterCard
-                  key={f.titulo_id}
-                  imagem={f.titulo.imagem}
-                  nome={f.titulo.nome}
-                  onClick={() => navigate(`/titulo/${f.titulo_id}?tipo=movie`)} // Garante o envio do tipo movie
-                />
-              ))}
-            </div>
           </>
         )}
 
@@ -151,18 +157,21 @@ export default function FilmesPage() {
                 </button>
               ))}
             </div>
-            {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
-            <div className="grid grid-cols-3 gap-3 px-4 pb-6">
-              {emBreve.map((f) => (
-                <PosterCard
-                  key={f.tmdb_id}
-                  imagem={f.imagem}
-                  nome={f.nome}
-                  badge={f.data_lancamento?.slice(0, 4)}
-                  onClick={() => navigate(`/titulo/novo/${f.tmdb_id}?tipo=movie`)}
-                />
-              ))}
-            </div>
+            {carregando ? (
+              <SkeletonPosterGrid count={9} />
+            ) : (
+              <div className="grid grid-cols-3 gap-3 px-4 pb-6">
+                {emBreve.map((f) => (
+                  <PosterCard
+                    key={f.tmdb_id}
+                    imagem={f.imagem}
+                    nome={f.nome}
+                    badge={f.data_lancamento?.slice(0, 4)}
+                    onClick={() => navigate(`/titulo/novo/${f.tmdb_id}?tipo=movie`)}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
