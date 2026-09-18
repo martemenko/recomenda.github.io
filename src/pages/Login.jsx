@@ -19,11 +19,16 @@ function corForcaSenha(pontuacao) {
 
 export default function Login() {
   const { entrarModoDemonstracao } = useAuth()
-  const [modo, setModo] = useState('login') // 'login' | 'cadastro' | 'otp-solicitar' | 'otp-verificar'
+  const [modo, setModo] = useState('login') // 'login' | 'cadastro' | 'otp-solicitar'
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [confirmarSenha, setConfirmarSenha] = useState('')
-  const [codigo, setCodigo] = useState('')
+  // Nosso plano de e-mail do Supabase não permite customizar o template de
+  // Magic Link, então o e-mail chega só com o link de confirmação (sem o
+  // código de 6 dígitos visível) -- por isso o fluxo aqui é "clique no link",
+  // não "digite o código". Ver supabase/config.toml (otp_length/otp_expiry
+  // continuam configurados pro dia em que isso for revisitado).
+  const [linkEnviado, setLinkEnviado] = useState(false)
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [cadastroFeito, setCadastroFeito] = useState(false)
@@ -82,6 +87,7 @@ export default function Login() {
   function mudarModo(novoModo) {
     setModo(novoModo)
     setErro('')
+    setLinkEnviado(false)
     resetarCaptcha()
   }
 
@@ -136,20 +142,26 @@ export default function Login() {
     }
   }
 
-  async function solicitarOtp(e) {
+  async function solicitarLinkLogin(e) {
     e.preventDefault()
     setErro('')
     setCarregando(true)
     try {
+      // origin+pathname (sem hash) -- mesmo padrão do redirectTo do cadastro
+      // acima. Se o link do Supabase cair em 404, o mais provável é o Site
+      // URL / Redirect URLs configurados no painel do Supabase não bater com
+      // essa URL real do app -- não é algo que o código resolva sozinho.
+      const redirectTo = `${window.location.origin}${window.location.pathname}`
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
           shouldCreateUser: false, // sem isso, qualquer e-mail digitado criaria conta nova, pulando cadastro/senha
           captchaToken,
+          emailRedirectTo: redirectTo,
         },
       })
       if (error) throw error
-      setModo('otp-verificar')
+      setLinkEnviado(true)
       setReenviarBloqueadoAte(Date.now() + COOLDOWN_REENVIO_MS)
     } catch (err) {
       setErro(err.message)
@@ -159,30 +171,14 @@ export default function Login() {
     }
   }
 
-  async function verificarOtp(e) {
-    e.preventDefault()
-    setErro('')
-    setCarregando(true)
-    try {
-      const { error } = await supabase.auth.verifyOtp({ email, token: codigo, type: 'email' })
-      if (error) throw error
-      // A partir daqui não precisa fazer mais nada: onAuthStateChange em
-      // lib/auth.jsx pega a sessão nova automaticamente e App.jsx troca de
-      // tela assim que `session` deixa de ser null.
-    } catch (err) {
-      setErro(err.message)
-    } finally {
-      setCarregando(false)
-    }
-  }
-
-  async function reenviarCodigo() {
+  async function reenviarLinkLogin() {
     if (reenvioBloqueado) return
     setErro('')
     try {
+      const redirectTo = `${window.location.origin}${window.location.pathname}`
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: false },
+        options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
       })
       if (error) throw error
       setReenviarBloqueadoAte(Date.now() + COOLDOWN_REENVIO_MS)
@@ -281,10 +277,10 @@ export default function Login() {
         </form>
       )}
 
-      {modo === 'otp-solicitar' && (
-        <form onSubmit={solicitarOtp} className="flex flex-col gap-3">
+      {modo === 'otp-solicitar' && !linkEnviado && (
+        <form onSubmit={solicitarLinkLogin} className="flex flex-col gap-3">
           <p className="text-muted text-xs text-center -mt-2 mb-1">
-            Manda um código de 6 dígitos pro seu e-mail, sem precisar de senha.
+            Manda um link de login pro seu e-mail, sem precisar de senha.
           </p>
           <label className="sr-only" htmlFor="otp-email">E-mail</label>
           <input
@@ -305,45 +301,29 @@ export default function Login() {
             disabled={carregando}
             className="bg-amber text-bg font-display font-semibold text-sm rounded-2xl py-3 mt-2 shadow-[0_0_18px_rgba(243,194,85,0.35)] disabled:opacity-60"
           >
-            {carregando ? 'Aguarde…' : 'Enviar código'}
+            {carregando ? 'Aguarde…' : 'Enviar link'}
           </button>
         </form>
       )}
 
-      {modo === 'otp-verificar' && (
-        <form onSubmit={verificarOtp} className="flex flex-col gap-3">
-          <p className="text-muted text-xs text-center -mt-2 mb-1">
-            Digite o código de 6 dígitos que mandamos pra <strong>{email}</strong>.
+      {modo === 'otp-solicitar' && linkEnviado && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-ink text-center leading-relaxed">
+            Mandamos um link de login pra <strong>{email}</strong>.
           </p>
-          <label className="sr-only" htmlFor="otp-codigo">Código de verificação</label>
-          <input
-            id="otp-codigo"
-            type="text"
-            inputMode="numeric"
-            placeholder="000000"
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            required
-            maxLength={6}
-            className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted text-center tracking-[0.3em] font-mono"
-          />
-          {erro && <div className="text-danger text-xs font-mono">{erro}</div>}
-          <button
-            type="submit"
-            disabled={carregando || codigo.length !== 6}
-            className="bg-amber text-bg font-display font-semibold text-sm rounded-2xl py-3 mt-2 shadow-[0_0_18px_rgba(243,194,85,0.35)] disabled:opacity-60"
-          >
-            {carregando ? 'Aguarde…' : 'Confirmar código'}
-          </button>
+          <p className="text-muted text-xs text-center -mt-1">
+            Abra seu e-mail e clique no link pra entrar direto, sem senha.
+          </p>
+          {erro && <div className="text-danger text-xs font-mono text-center">{erro}</div>}
           <button
             type="button"
-            onClick={reenviarCodigo}
+            onClick={reenviarLinkLogin}
             disabled={reenvioBloqueado}
             className="text-muted text-xs font-mono text-center mt-1 disabled:opacity-50"
           >
-            {reenvioBloqueado ? `Reenviar código (${segundosReenvio}s)` : 'Reenviar código'}
+            {reenvioBloqueado ? `Reenviar link (${segundosReenvio}s)` : 'Reenviar link'}
           </button>
-        </form>
+        </div>
       )}
 
       {(modo === 'login' || modo === 'cadastro') && (
@@ -358,12 +338,12 @@ export default function Login() {
             onClick={() => mudarModo('otp-solicitar')}
             className="text-muted text-xs font-mono text-center mt-2"
           >
-            Entrar com código por e-mail
+            Entrar com link por e-mail
           </button>
         </>
       )}
 
-      {(modo === 'otp-solicitar' || modo === 'otp-verificar') && (
+      {modo === 'otp-solicitar' && (
         <button
           onClick={() => mudarModo('login')}
           className="text-muted text-xs font-mono text-center mt-5"
