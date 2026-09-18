@@ -7,6 +7,7 @@ import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
+import { SkeletonPosterGrid } from '../components/SkeletonShapes'
 
 export default function JogosPage() {
   const { user } = useAuth()
@@ -103,44 +104,54 @@ export default function JogosPage() {
         {aba === 'lista' && (
           <>
             <SectionLabel>Seguindo</SectionLabel>
-            {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
-            {!carregando && meusJogos.length === 0 && (
-              <div className="px-4 py-6 text-muted text-sm font-mono text-center">
-                Nenhum jogo seguido ainda. Busque algo em Explorar.
-              </div>
+            {carregando ? (
+              <SkeletonPosterGrid count={9} />
+            ) : (
+              <>
+                {meusJogos.length === 0 && (
+                  <div className="px-4 py-6 text-muted text-sm font-mono text-center">
+                    Nenhum jogo seguido ainda. Busque algo em Explorar.
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3 px-4 pb-6">
+                  {meusJogos.map((j) => (
+                    <PosterCard
+                      key={j.titulo_id}
+                      imagem={j.titulo.imagem}
+                      nome={j.titulo.nome}
+                      onClick={() => navigate(`/titulo/${j.titulo_id}?tipo=game`)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
-            <div className="grid grid-cols-3 gap-3 px-4 pb-6">
-              {meusJogos.map((j) => (
-                <PosterCard
-                  key={j.titulo_id}
-                  imagem={j.titulo.imagem}
-                  nome={j.titulo.nome}
-                  onClick={() => navigate(`/titulo/${j.titulo_id}?tipo=game`)}
-                />
-              ))}
-            </div>
           </>
         )}
 
         {aba === 'em_breve' && (
           <>
-            {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
-            {!carregando && emBreve.length === 0 && (
-              <div className="px-4 py-6 text-muted text-sm font-mono text-center">
-                Não foi possível carregar lançamentos agora.
-              </div>
+            {carregando ? (
+              <SkeletonPosterGrid count={9} />
+            ) : (
+              <>
+                {emBreve.length === 0 && (
+                  <div className="px-4 py-6 text-muted text-sm font-mono text-center">
+                    Não foi possível carregar lançamentos agora.
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3 px-4 pb-6 pt-3">
+                  {emBreve.map((j) => (
+                    <PosterCard
+                      key={j.igdb_id}
+                      imagem={j.imagem}
+                      nome={j.nome}
+                      badge={j.data_lancamento?.slice(0, 4)}
+                      onClick={() => navigate(`/titulo/novo/${j.igdb_id}?tipo=game&fonte=igdb`)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
-            <div className="grid grid-cols-3 gap-3 px-4 pb-6 pt-3">
-              {emBreve.map((j) => (
-                <PosterCard
-                  key={j.igdb_id}
-                  imagem={j.imagem}
-                  nome={j.nome}
-                  badge={j.data_lancamento?.slice(0, 4)}
-                  onClick={() => navigate(`/titulo/novo/${j.igdb_id}?tipo=game&fonte=igdb`)}
-                />
-              ))}
-            </div>
           </>
         )}
       </div>

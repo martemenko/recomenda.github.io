@@ -147,18 +147,18 @@ export default function ContaConfiguracoes() {
   }
 
   return (
-    <div className="flex-1 pb-10">
+    <div className="flex-1 overflow-y-auto scroll-area pb-10">
       <TopBar
         title="Conta"
         rightSlot={
-          <button onClick={() => navigate('/configuracoes')} className="text-muted">
+          <button onClick={() => navigate('/configuracoes')} aria-label="Voltar" className="text-muted">
             <ArrowLeft size={20} />
           </button>
         }
       />
 
       <SectionLabel>Privacidade</SectionLabel>
-      <div className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between">
+      <label className="mx-4 p-4 bg-surface rounded-2xl border border-white/5 flex items-center justify-between cursor-pointer">
         <div>
           <div className="font-display font-medium text-sm text-ink">Perfil Privado</div>
           <div className="text-xs text-muted">Oculta seu perfil de quem não é você — escolha exceções abaixo</div>
@@ -169,7 +169,7 @@ export default function ContaConfiguracoes() {
           onChange={(e) => alternarPerfilPrivado(e.target.checked)}
           className="w-5 h-5 accent-amber rounded"
         />
-      </div>
+      </label>
 
       {perfilPrivado && (
         <div className="mx-4 mt-3 bg-surface rounded-2xl border border-white/5 divide-y divide-white/5">
@@ -200,8 +200,9 @@ export default function ContaConfiguracoes() {
       <div className="mx-4 bg-surface rounded-2xl border border-white/5 divide-y divide-white/5">
         <div className="p-4 space-y-3">
           <div>
-            <label className="text-xs text-muted font-mono">Nome</label>
+            <label className="text-xs text-muted font-mono" htmlFor="conta-nome">Nome</label>
             <input
+              id="conta-nome"
               type="text"
               placeholder="Nome (opcional)"
               value={nomeEditavel}
@@ -210,12 +211,13 @@ export default function ContaConfiguracoes() {
             />
           </div>
           <div>
-            <label className="text-xs text-muted font-mono">Data de nascimento</label>
+            <label className="text-xs text-muted font-mono" htmlFor="conta-data-nascimento">Data de nascimento</label>
             <input
+              id="conta-data-nascimento"
               type="date"
               value={dataNascimentoEditavel}
               onChange={(e) => setDataNascimentoEditavel(e.target.value)}
-              className="mt-1 w-full bg-surface2 border border-white/10 rounded-xl px-3 py-2 text-sm text-ink placeholder:text-muted"
+              className="mt-1 w-full bg-surface2 border border-white/10 rounded-xl px-3 py-2 text-sm text-ink placeholder:text-muted [color-scheme:dark]"
             />
           </div>
           {dadosPessoaisMsg && <div className="text-xs font-mono text-amber">{dadosPessoaisMsg}</div>}
@@ -246,14 +248,17 @@ export default function ContaConfiguracoes() {
         <hr className="border-white/5" />
 
         <div className="space-y-3 pt-1">
-          <div className="text-xs text-muted">
+          <div className="text-xs text-muted" id="confirmacao-exclusao-instrucao">
             Para excluir permanentemente sua conta e todos os dados armazenados, digite <strong className="text-red-400">EXCLUIR</strong> abaixo:
           </div>
+          <label className="sr-only" htmlFor="confirmacao-exclusao">Digite EXCLUIR para confirmar a exclusão da conta</label>
           <input
+            id="confirmacao-exclusao"
             type="text"
             value={confirmacaoExclusao}
             onChange={(e) => setConfirmacaoExclusao(e.target.value)}
             placeholder="Digite EXCLUIR"
+            aria-describedby="confirmacao-exclusao-instrucao"
             className="w-full bg-surface2 border border-white/10 rounded-xl p-2.5 text-xs text-ink placeholder:text-muted/50"
           />
           <button

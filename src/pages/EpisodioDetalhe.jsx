@@ -695,7 +695,7 @@ export default function EpisodioDetalhe() {
       {comentariosAbertos && (
         <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
-            <button onClick={() => setComentariosAbertos(false)} className="text-muted">
+            <button onClick={() => setComentariosAbertos(false)} aria-label="Fechar comentários" className="text-muted">
               <ChevronLeft size={22} />
             </button>
             <div className="text-base text-ink font-display font-semibold">Comentários</div>

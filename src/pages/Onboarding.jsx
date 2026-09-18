@@ -63,8 +63,9 @@ export default function Onboarding() {
         só mais um passo antes de começar
       </p>
       <form onSubmit={enviar} className="flex flex-col gap-3">
-        <label className="text-xs text-muted font-mono">Username</label>
+        <label className="text-xs text-muted font-mono" htmlFor="onboarding-username">Username</label>
         <input
+          id="onboarding-username"
           type="text"
           placeholder="Username"
           value={username}
@@ -72,20 +73,22 @@ export default function Onboarding() {
           required
           className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
         />
-        <label className="text-xs text-muted font-mono mt-2">
+        <label className="text-xs text-muted font-mono mt-2" htmlFor="onboarding-data-nascimento">
           Data de nascimento <span className="text-[10px]">(usamos pra melhorar as recomendações)</span>
         </label>
         <input
+          id="onboarding-data-nascimento"
           type="date"
           value={dataNascimento}
           onChange={(e) => setDataNascimento(e.target.value)}
           required
-          className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted"
+          className="bg-surface border border-white/10 rounded-2xl px-4 py-3 text-sm text-ink placeholder:text-muted [color-scheme:dark]"
         />
-        <label className="text-xs text-muted font-mono mt-2">
+        <label className="text-xs text-muted font-mono mt-2" htmlFor="onboarding-nome">
           Nome <span className="text-[10px]">(opcional — você decide se compartilha isso depois, em Configurações)</span>
         </label>
         <input
+          id="onboarding-nome"
           type="text"
           placeholder="Nome (opcional)"
           value={nome}

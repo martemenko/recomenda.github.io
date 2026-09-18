@@ -23,7 +23,9 @@ import ComentarioThread from '../components/ComentarioThread'
 import ComentarioComposer from '../components/ComentarioComposer'
 import VistoPorSeguidos from '../components/VistoPorSeguidos'
 import ReviewShareCard from '../components/ReviewShareCard'
+import { SkeletonDetailHeader } from '../components/SkeletonShapes'
 import { POSTER_BASE, resolverUrlImagemGrande } from '../lib/image'
+import useDialogA11y from '../lib/useDialogA11y'
 
 const PROVIDER_LOGO_BASE = 'https://image.tmdb.org/t/p/w92'
 
@@ -80,6 +82,8 @@ export default function TituloDetalhe() {
   const [modalExportarAberto, setModalExportarAberto] = useState(false)
   const [exportando, setExportando] = useState(false)
   const cardExportRef = useRef(null)
+  const modalExportarPainelRef = useRef(null)
+  useDialogA11y({ open: modalExportarAberto, onClose: () => setModalExportarAberto(false), containerRef: modalExportarPainelRef })
 
   // Obtém a data local de hoje em formato YYYY-MM-DD absoluto e seguro contra fuso horário
   const hojeLocal = new Date()
@@ -702,8 +706,6 @@ export default function TituloDetalhe() {
   )
   const todosEpisodiosAssistidos = episodiosLancados.length > 0 && episodiosLancados.every((e) => assistidos.has(e.id))
 
-  if (!titulo) return <div className="p-4 text-muted text-sm font-mono">Carregando…</div>
-
   const rotuloReassistir = mediaType === 'game' ? 'Marcar como rejogado' : 'Marcar como reassistido'
   const rotuloNaoVisto = mediaType === 'game' ? 'Marcar como não jogado' : 'Marcar como não visto'
   const rotuloSheetTitulo = sheetAssistido?.episodeIds
@@ -721,15 +723,21 @@ export default function TituloDetalhe() {
         >
           <ChevronLeft size={22} />
         </button>
-        <button
-          onClick={favoritar}
-          aria-label="Favoritar"
-          className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer z-50"
-        >
-          <Heart size={20} fill={userItem?.favorito ? '#ff4b5c' : 'none'} className={userItem?.favorito ? 'text-heart' : 'text-ink'} />
-        </button>
+        {titulo && (
+          <button
+            onClick={favoritar}
+            aria-label="Favoritar"
+            className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/15 flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer z-50"
+          >
+            <Heart size={20} fill={userItem?.favorito ? '#ff4b5c' : 'none'} className={userItem?.favorito ? 'text-heart' : 'text-ink'} />
+          </button>
+        )}
       </div>
 
+      {!titulo ? (
+        <SkeletonDetailHeader />
+      ) : (
+        <>
       <div className="-mt-16 relative">
         {titulo.imagem && <img src={resolverUrlImagemGrande(titulo.imagem)} alt={titulo.nome} className="w-full aspect-[2/3] object-cover" />}
 
@@ -907,7 +915,7 @@ export default function TituloDetalhe() {
                         onChange={(e) => setReviewRascunho(e.target.value)}
                         placeholder="Deixar uma review (opcional)"
                         rows={3}
-                        className="w-full bg-surface2/40 border border-white/10 rounded-xl p-2.5 text-sm text-ink placeholder:text-muted/60 resize-none focus:outline-none focus:border-amber/40"
+                        className="w-full bg-surface2/40 border border-white/10 rounded-xl p-2.5 text-sm text-ink placeholder:text-muted resize-none"
                       />
                       <button
                         onClick={salvarReview}
@@ -1129,10 +1137,9 @@ export default function TituloDetalhe() {
                           return (
                             <div
                               key={e.id}
-                              onClick={() => navigate(`/episodio/${e.id}`)}
-                              className="group relative flex items-center gap-3 p-3 bg-surface hover:bg-surface2 rounded-xl border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-[0.995]"
+                              className="group relative flex items-center gap-3 p-3 bg-surface hover:bg-surface2 rounded-xl border border-white/5 hover:border-white/15 transition-all duration-200"
                             >
-                              {/* Checkbox para marcar visto (sem acionar navegação da linha) */}
+                              {/* Checkbox para marcar visto -- agora irmão do botão de navegação (não mais aninhado dentro dele) */}
                               <button
                                 onClick={(evt) => {
                                   evt.stopPropagation()
@@ -1148,55 +1155,64 @@ export default function TituloDetalhe() {
                                 <Check size={16} strokeWidth={2.5} />
                               </button>
 
-                              {/* Miniatura / Badge do Episódio */}
-                              <div className="w-16 h-12 bg-surface2 rounded-lg overflow-hidden flex-shrink-0 relative border border-white/10 flex items-center justify-center">
-                                {titulo.imagem ? (
-                                  <img
-                                    src={`${POSTER_BASE}${titulo.imagem}`}
-                                    alt=""
-                                    className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity"
-                                  />
-                                ) : null}
-                                <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
-                                  <span className="font-display font-semibold text-xs text-ink drop-shadow">
-                                    E{String(e.episode_number).padStart(2, '0')}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Informações Principais do Episódio */}
-                              <div className="flex-1 min-w-0">
-                                <div className="font-display font-medium text-sm text-ink truncate group-hover:text-amber transition-colors">
-                                  <span className="text-amber/90 font-semibold mr-1.5">{e.episode_number}.</span>
-                                  {e.episode_name}
-                                </div>
-                                <div className="text-xs text-muted font-sans mt-0.5 flex items-center gap-2">
-                                  {marcado ? (
-                                    <span className="text-teal font-medium">
-                                      Assistido{vezesAssistido > 1 ? ` · ${vezesAssistido}x` : ''}
+                              {/* Miniatura + informações + chevron: botão que navega pro episódio */}
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/episodio/${e.id}`)}
+                                className="block appearance-none p-0 border-0 text-left bg-transparent flex-1 min-w-0 flex items-center gap-3 active:scale-[0.995]"
+                              >
+                                {/* Miniatura / Badge do Episódio */}
+                                <div className="w-16 h-12 bg-surface2 rounded-lg overflow-hidden flex-shrink-0 relative border border-white/10 flex items-center justify-center">
+                                  {titulo.imagem ? (
+                                    <img
+                                      src={`${POSTER_BASE}${titulo.imagem}`}
+                                      alt=""
+                                      className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity"
+                                    />
+                                  ) : null}
+                                  <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                                    <span className="font-display font-semibold text-xs text-ink drop-shadow">
+                                      E{String(e.episode_number).padStart(2, '0')}
                                     </span>
-                                  ) : (
-                                    <span>Lançamento: {formatarDataExtensa(e.launch_date)}</span>
-                                  )}
-                                  {e.duration && (
-                                    <span className="text-muted/60">· {e.duration} min</span>
-                                  )}
+                                  </div>
                                 </div>
-                              </div>
 
-                              {/* Chevron de indicação de linha clicável */}
-                              <ChevronRight size={18} className="text-muted/40 group-hover:text-ink group-hover:translate-x-0.5 transition-all flex-shrink-0 mr-0.5" />
+                                {/* Informações Principais do Episódio */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-display font-medium text-sm text-ink truncate group-hover:text-amber transition-colors">
+                                    <span className="text-amber/90 font-semibold mr-1.5">{e.episode_number}.</span>
+                                    {e.episode_name}
+                                  </div>
+                                  <div className="text-xs text-muted font-sans mt-0.5 flex items-center gap-2">
+                                    {marcado ? (
+                                      <span className="text-teal font-medium">
+                                        Assistido{vezesAssistido > 1 ? ` · ${vezesAssistido}x` : ''}
+                                      </span>
+                                    ) : (
+                                      <span>Lançamento: {formatarDataExtensa(e.launch_date)}</span>
+                                    )}
+                                    {e.duration && (
+                                      <span className="text-muted">· {e.duration} min</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Chevron de indicação de linha clicável */}
+                                <ChevronRight size={18} className="text-muted/40 group-hover:text-ink group-hover:translate-x-0.5 transition-all flex-shrink-0 mr-0.5" />
+                              </button>
                             </div>
                           )
                         } else {
                           // Episódio Não Lançado / Inédito
                           return (
-                            <div
+                            <button
                               key={e.id}
+                              type="button"
                               onClick={() => navigate(`/episodio/${e.id}`)}
-                              className="flex items-center gap-3 p-3 bg-surface/40 hover:bg-surface/80 rounded-xl border border-white/5 opacity-70 hover:opacity-100 transition-all cursor-pointer"
+                              aria-label={`Episódio inédito: ${e.episode_name}`}
+                              className="block appearance-none text-left w-full flex items-center gap-3 p-3 bg-surface/40 hover:bg-surface/80 rounded-xl border border-white/5 opacity-70 hover:opacity-100 transition-all"
                             >
-                              <div className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border border-white/10 text-muted/40">
+                              <div className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center border border-white/10 text-muted">
                                 <Lock size={14} />
                               </div>
                               <div className="w-16 h-12 bg-surface2 rounded-lg overflow-hidden flex-shrink-0 relative border border-white/5 flex items-center justify-center">
@@ -1218,12 +1234,12 @@ export default function TituloDetalhe() {
                                   <span className="mr-1.5">{e.episode_number}.</span>
                                   {e.episode_name}
                                 </div>
-                                <div className="text-xs text-muted/70 font-sans mt-0.5 flex items-center gap-1">
+                                <div className="text-xs text-muted font-sans mt-0.5 flex items-center gap-1">
                                   <Calendar size={12} className="text-muted/60" />
                                   <span>Estreia em {formatarDataExtensa(e.launch_date)}</span>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           )
                         }
                       })}
@@ -1326,7 +1342,13 @@ export default function TituloDetalhe() {
       )}
 
       {modalExportarAberto && (
-        <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 px-6 gap-4">
+        <div
+          ref={modalExportarPainelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Exportar imagem da review"
+          className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 px-6 gap-4"
+        >
           <div
             style={{ width: 1080 * 0.35, height: 1350 * 0.35, overflow: 'hidden' }}
             className="rounded-2xl shadow-2xl"
@@ -1360,6 +1382,8 @@ export default function TituloDetalhe() {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )

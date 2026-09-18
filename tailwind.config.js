@@ -11,7 +11,7 @@ export default {
         teal: '#dd0df4',
         ink: '#edeef0',
         muted: '#9791c2',
-        danger: '#db1391',
+        danger: '#ef43af',
         heart: '#ff4b5c',
       },
       fontFamily: {

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient'
 import { intercalar } from '../lib/format'
 import { useAuth } from '../lib/auth'
 import TopBar from '../components/TopBar'
+import { SkeletonListRows } from '../components/SkeletonShapes'
 
 const POSTER_BASE_THUMB = 'https://image.tmdb.org/t/p/w200'
 
@@ -216,12 +217,12 @@ export default function ListaDetalhe() {
         <TopBar
           title="Lista"
           rightSlot={
-            <button onClick={() => navigate('/perfil')} className="text-muted">
+            <button onClick={() => navigate('/perfil')} aria-label="Voltar" className="text-muted">
               <ArrowLeft size={20} />
             </button>
           }
         />
-        <div className="px-4 py-6 text-sm text-muted font-mono">Carregando...</div>
+        <SkeletonListRows count={6} />
       </div>
     )
   }
@@ -232,7 +233,7 @@ export default function ListaDetalhe() {
         <TopBar
           title="Lista"
           rightSlot={
-            <button onClick={() => navigate('/perfil')} className="text-muted">
+            <button onClick={() => navigate('/perfil')} aria-label="Voltar" className="text-muted">
               <ArrowLeft size={20} />
             </button>
           }
@@ -249,7 +250,7 @@ export default function ListaDetalhe() {
       <TopBar
         title={lista.nome}
         rightSlot={
-          <button onClick={() => navigate('/perfil')} className="text-muted">
+          <button onClick={() => navigate('/perfil')} aria-label="Voltar" className="text-muted">
             <ArrowLeft size={20} />
           </button>
         }
@@ -264,6 +265,7 @@ export default function ListaDetalhe() {
         </button>
         <button
           onClick={excluirLista}
+          aria-label="Excluir lista"
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-display font-semibold rounded-xl text-sm transition-colors"
         >
           <Trash2 size={16} />
@@ -274,7 +276,9 @@ export default function ListaDetalhe() {
         {buscaAberta && (
           <div className="mt-3 bg-surface border border-white/5 rounded-2xl p-3 space-y-3">
             <form onSubmit={buscarTitulos} className="flex gap-2">
+              <label className="sr-only" htmlFor="lista-detalhe-busca">Nome do filme, série ou jogo</label>
               <input
+                id="lista-detalhe-busca"
                 type="text"
                 value={termoBusca}
                 onChange={(e) => setTermoBusca(e.target.value)}
@@ -296,6 +300,7 @@ export default function ListaDetalhe() {
                   setResultados([])
                   setTermoBusca('')
                 }}
+                aria-label="Cancelar busca"
                 className="text-muted px-1"
               >
                 <X size={18} />
@@ -348,20 +353,24 @@ export default function ListaDetalhe() {
             key={item.titulo_id}
             className="flex items-center gap-3 bg-surface border border-white/5 rounded-2xl p-2.5"
           >
-            <div
+            <button
+              type="button"
               onClick={() => navigate(`/titulo/${item.titulo_id}`)}
-              className="w-11 aspect-[2/3] rounded-md bg-surface2 flex-shrink-0 bg-cover bg-center cursor-pointer"
+              aria-label={item.titulo?.nome ? `Abrir ${item.titulo.nome}` : 'Abrir título'}
+              className="block appearance-none p-0 border-0 text-left bg-transparent w-11 aspect-[2/3] rounded-md bg-surface2 flex-shrink-0 bg-cover bg-center"
               style={item.titulo?.imagem ? { backgroundImage: `url(${urlPoster(item.titulo.imagem)})` } : undefined}
             />
-            <div
+            <button
+              type="button"
               onClick={() => navigate(`/titulo/${item.titulo_id}`)}
-              className="flex-1 text-sm text-ink font-display font-medium truncate cursor-pointer"
+              className="block appearance-none p-0 border-0 text-left bg-transparent flex-1 text-sm text-ink font-display font-medium truncate"
             >
               {item.titulo?.nome}
-            </div>
+            </button>
             <button
               onClick={() => removerTitulo(item.titulo_id)}
               disabled={removendoId === item.titulo_id}
+              aria-label="Remover da lista"
               className="p-2 text-red-400 disabled:opacity-30"
             >
               <Trash2 size={16} />

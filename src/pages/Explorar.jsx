@@ -7,6 +7,7 @@ import { getCache, setCache } from '../lib/dataCache'
 import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
+import { SkeletonPosterGrid, SkeletonShelf } from '../components/SkeletonShapes'
 
 // Cada linha "Top 10" vem de um endpoint diferente (ver módulo docstring de
 // cada função em supabase/functions) -- declaradas juntas pra a tela poder
@@ -152,9 +153,12 @@ export default function Explorar() {
           </div>
         </div>
 
-        {carregando && <div className="px-4 text-muted text-sm font-mono">Buscando…</div>}
-
-        {resultados !== null ? (
+        {carregando ? (
+          <>
+            <SectionLabel>Resultados</SectionLabel>
+            <SkeletonPosterGrid count={6} />
+          </>
+        ) : resultados !== null ? (
           <>
             <SectionLabel>Resultados</SectionLabel>
             {resultados.length === 0 && (
@@ -192,7 +196,7 @@ export default function Explorar() {
               <div key={chave}>
                 <SectionLabel>{titulo}</SectionLabel>
                 {top10[chave].length === 0 ? (
-                  <div className="px-4 pb-4 text-muted text-sm font-mono">Carregando…</div>
+                  <SkeletonShelf count={5} />
                 ) : (
                   <div className="flex gap-3 px-4 pb-6 overflow-x-auto scroll-area">
                     {top10[chave].map((item, i) => (

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ThumbsUp, Laugh, Heart } from 'lucide-react'
 import UserAvatar from './UserAvatar'
@@ -45,11 +45,51 @@ function BarraReacoes({ comentario, onReagir }) {
   const [trayAberto, setTrayAberto] = useState(false)
   const timerRef = useRef(null)
   const segurouRef = useRef(false)
+  const trayRef = useRef(null)
 
   const minhaReacao = comentario.reacoes?.minhaReacao ?? null
   const totalReacoes = TIPOS_REACAO.reduce((soma, { tipo }) => soma + (comentario.reacoes?.[tipo] ?? 0), 0)
   const tipoAtual = TIPOS_REACAO.find((t) => t.tipo === minhaReacao)
   const itemPrincipal = tipoAtual ?? TIPOS_REACAO[0]
+
+  // Ao abrir o tray (toque longo ou seta pra cima), move o foco pro primeiro
+  // botão de reação -- fecha com o clique fora já tratado abaixo.
+  useEffect(() => {
+    if (!trayAberto) return
+    const botoes = trayRef.current ? Array.from(trayRef.current.querySelectorAll('button')) : []
+    botoes[0]?.focus()
+  }, [trayAberto])
+
+  // Tab-trap simples enquanto o tray de reações está aberto: cicla o foco
+  // entre o primeiro e o último botão de reação (só 3 opções).
+  function aoTeclarNoTray(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setTrayAberto(false)
+      return
+    }
+    if (e.key !== 'Tab') return
+    const botoes = trayRef.current ? Array.from(trayRef.current.querySelectorAll('button')) : []
+    if (botoes.length === 0) return
+    const primeiro = botoes[0]
+    const ultimo = botoes[botoes.length - 1]
+    if (e.shiftKey && document.activeElement === primeiro) {
+      e.preventDefault()
+      ultimo.focus()
+    } else if (!e.shiftKey && document.activeElement === ultimo) {
+      e.preventDefault()
+      primeiro.focus()
+    }
+  }
+
+  // Seta pra cima com foco no botão de reação abre o tray (equivalente ao
+  // toque longo) e move o foco pra dentro dele via efeito acima.
+  function aoTeclarNoBotao(e) {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setTrayAberto(true)
+    }
+  }
 
   function iniciarPressao() {
     segurouRef.current = false
@@ -82,6 +122,9 @@ function BarraReacoes({ comentario, onReagir }) {
         onPointerUp={aoSoltar}
         onPointerLeave={cancelarPressao}
         onContextMenu={(e) => e.preventDefault()}
+        onKeyDown={aoTeclarNoBotao}
+        aria-haspopup="true"
+        aria-expanded={trayAberto}
         style={{ touchAction: 'manipulation' }}
         className={`flex items-center gap-1.5 text-xs font-display font-medium transition-colors select-none ${
           tipoAtual ? tipoAtual.corAtiva : 'text-muted hover:text-ink'
@@ -95,7 +138,11 @@ function BarraReacoes({ comentario, onReagir }) {
       {trayAberto && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setTrayAberto(false)} />
-          <div className="absolute bottom-full left-0 mb-1.5 flex items-center gap-1 bg-surface border border-white/10 rounded-full px-2 py-1.5 shadow-lg z-50">
+          <div
+            ref={trayRef}
+            onKeyDown={aoTeclarNoTray}
+            className="absolute bottom-full left-0 mb-1.5 flex items-center gap-1 bg-surface border border-white/10 rounded-full px-2 py-1.5 shadow-lg z-50"
+          >
             {TIPOS_REACAO.map((item) => (
               <button
                 key={item.tipo}

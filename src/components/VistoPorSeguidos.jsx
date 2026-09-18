@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 import UserAvatar from './UserAvatar'
 import SectionLabel from './SectionLabel'
+import useDialogA11y from '../lib/useDialogA11y'
 
 // "Quem mais viu isso" -- só considera quem o usuário logado segue, lendo
 // user_item_publico/watched_episode_publico (views que já respeitam a
@@ -16,6 +17,8 @@ export default function VistoPorSeguidos({ tituloId, episodeId, tipo = 'assistiu
   const navigate = useNavigate()
   const [pessoas, setPessoas] = useState([])
   const [listaAberta, setListaAberta] = useState(false)
+  const listaAbertaPainelRef = useRef(null)
+  useDialogA11y({ open: listaAberta, onClose: () => setListaAberta(false), containerRef: listaAbertaPainelRef })
 
   useEffect(() => {
     if (!user) {
@@ -103,12 +106,18 @@ export default function VistoPorSeguidos({ tituloId, episodeId, tipo = 'assistiu
       </div>
 
       {listaAberta && (
-        <div className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0">
+        <div
+          ref={listaAbertaPainelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="visto-por-seguidos-titulo"
+          className="fixed inset-0 bg-bg z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0"
+        >
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 flex-shrink-0">
-            <button onClick={() => setListaAberta(false)} className="text-muted">
+            <button onClick={() => setListaAberta(false)} aria-label="Voltar" className="text-muted">
               <ArrowLeft size={20} />
             </button>
-            <div className="text-base text-ink font-display font-semibold">{tituloSecao}</div>
+            <div id="visto-por-seguidos-titulo" className="text-base text-ink font-display font-semibold">{tituloSecao}</div>
           </div>
           <div className="flex-1 overflow-y-auto scroll-area px-4 py-2">
             {pessoas.map((p) => (

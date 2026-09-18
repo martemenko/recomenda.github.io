@@ -11,6 +11,8 @@ import TopBar from '../components/TopBar'
 import SectionLabel from '../components/SectionLabel'
 import PosterCard from '../components/PosterCard'
 import UserAvatar from '../components/UserAvatar'
+import { SkeletonStatsGrid, SkeletonShelf } from '../components/SkeletonShapes'
+import useDialogA11y from '../lib/useDialogA11y'
 
 // Desenha um fundo escuro com um furo circular de 280px centralizado (compatível 100% com WebKit / Safari)
 function MascaraCircular() {
@@ -88,6 +90,7 @@ export default function Perfil() {
   const { user, perfil, recarregarPerfil } = useAuth()
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
+  const [carregando, setCarregando] = useState(true)
   const [contagemSeguidores, setContagemSeguidores] = useState(0)
   const [contagemSeguindo, setContagemSeguindo] = useState(0)
   const [listaSeguidores, setListaSeguidores] = useState(null) // { tipo: 'seguidores'|'seguindo', pessoas: [...] } | null
@@ -118,6 +121,7 @@ export default function Perfil() {
   const [zoom, setZoom] = useState(1)
   const [areaRecortePixels, setAreaRecortePixels] = useState(null)
   const [salvandoRecorte, setSalvandoRecorte] = useState(false)
+  const modalRecortePainelRef = useRef(null)
 
   // Seção atualmente expandida em tela cheia (ou null se nenhuma) - guarda o
   // título do cabeçalho e a lista completa de itens (já carregada em memória,
@@ -153,6 +157,7 @@ export default function Perfil() {
       setListas(ls ?? [])
       setContagemSeguidores(cs ?? 0)
       setContagemSeguindo(cg ?? 0)
+      setCarregando(false)
 
       if (cached.isStale) {
         carregar()
@@ -350,6 +355,8 @@ export default function Perfil() {
 
     } catch (err) {
       console.error('[Perfil] Falha no carregamento paralelo:', err)
+    } finally {
+      setCarregando(false)
     }
   }
 
@@ -410,6 +417,8 @@ export default function Perfil() {
   function fecharModalRecorte() {
     setModalRecorte(null)
   }
+
+  useDialogA11y({ open: !!modalRecorte, onClose: fecharModalRecorte, containerRef: modalRecortePainelRef })
 
   async function confirmarRecorte() {
     if (!modalRecorte || !areaRecortePixels) return
@@ -534,7 +543,7 @@ export default function Perfil() {
       <TopBar
         title="Perfil"
         rightSlot={
-          <button onClick={() => navigate('/configuracoes')} className="text-muted">
+          <button onClick={() => navigate('/configuracoes')} aria-label="Abrir configurações" className="text-muted">
             <MoreVertical size={20} />
           </button>
         }
@@ -622,50 +631,60 @@ export default function Perfil() {
         </div>
 
         <SectionLabel>Estatísticas</SectionLabel>
-        {stats && (
-          <div className="grid grid-cols-2 gap-3 px-4 mb-2">
-            <StatCard label="Tempo vendo TV" valor={stats.tempoTv} />
-            <StatCard label="Episódios assistidos" valor={stats.episodios} />
-            <StatCard label="Tempo vendo filmes" valor={stats.tempoFilme} />
-            <StatCard label="Filmes assistidos" valor={stats.filmes} />
-            <StatCard label="Jogos jogados" valor={stats.jogos} />
-          </div>
+        {carregando ? (
+          <SkeletonStatsGrid />
+        ) : (
+          stats && (
+            <div className="grid grid-cols-2 gap-3 px-4 mb-2">
+              <StatCard label="Tempo vendo TV" valor={stats.tempoTv} />
+              <StatCard label="Episódios assistidos" valor={stats.episodios} />
+              <StatCard label="Tempo vendo filmes" valor={stats.tempoFilme} />
+              <StatCard label="Filmes assistidos" valor={stats.filmes} />
+              <StatCard label="Jogos jogados" valor={stats.jogos} />
+            </div>
+          )
         )}
 
         <Prateleira
           titulo="Séries favoritas"
           itens={seriesFavoritas}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Séries favoritas', itens: seriesFavoritas })}
         />
         <Prateleira
           titulo="Filmes favoritos"
           itens={filmesFavoritos}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Filmes favoritos', itens: filmesFavoritos })}
         />
         <Prateleira
           titulo="Jogos favoritos"
           itens={jogosFavoritos}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Jogos favoritos', itens: jogosFavoritos })}
         />
         <Prateleira
           titulo="Minhas séries"
           itens={minhasSeries}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Minhas séries', itens: minhasSeries })}
         />
         <Prateleira
           titulo="Meus filmes"
           itens={meusFilmes}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus filmes', itens: meusFilmes })}
         />
         <Prateleira
           titulo="Meus jogos"
           itens={meusJogos}
           navigate={navigate}
+          carregando={carregando}
           aoExpandir={() => setSecaoExpandida({ titulo: 'Meus jogos', itens: meusJogos })}
         />
 
@@ -844,12 +863,18 @@ export default function Perfil() {
       )}
 
       {modalRecorte && (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0 modal-cropper-container">
+        <div
+          ref={modalRecortePainelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-recorte-titulo"
+          className="fixed inset-0 bg-black z-50 flex flex-col max-w-[480px] mx-auto w-full left-0 right-0 modal-cropper-container"
+        >
           <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 z-20 bg-black">
-            <button onClick={fecharModalRecorte} className="text-ink p-1">
+            <button onClick={fecharModalRecorte} aria-label="Fechar" className="text-ink p-1">
               <X size={22} />
             </button>
-            <div className="text-sm text-ink font-display font-semibold">
+            <div id="modal-recorte-titulo" className="text-sm text-ink font-display font-semibold">
               {modalRecorte.tipo === 'avatar' ? 'Recortar foto de perfil' : 'Recortar capa'}
             </div>
             <button
@@ -896,21 +921,23 @@ export default function Perfil() {
   )
 }
 
-function Prateleira({ titulo, itens, navigate, aoExpandir }) {
+function Prateleira({ titulo, itens, navigate, aoExpandir, carregando }) {
   return (
     <div className="mb-1">
       <div className="flex items-center justify-between pr-4">
         <SectionLabel>{titulo}</SectionLabel>
-        {itens.length > 0 && (
+        {!carregando && itens.length > 0 && (
           <button onClick={aoExpandir} className="text-muted">
             <ChevronRight size={18} />
           </button>
         )}
       </div>
-      {itens.length === 0 ? (
+      {carregando ? (
+        <SkeletonShelf />
+      ) : itens.length === 0 ? (
         <div className="px-4 pb-2 text-muted text-sm font-mono">Nada por aqui ainda.</div>
       ) : (
-        <div 
+        <div
           className="flex flex-nowrap items-start gap-3 px-4 pb-3 overflow-x-auto custom-scrollbar h-[220px]"
           style={{ scrollbarWidth: 'thin', scrollbarColor: '#f3c255 rgba(255, 255, 255, 0.05)' }}
         >

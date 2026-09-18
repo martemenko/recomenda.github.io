@@ -7,6 +7,7 @@ import { registrarAssistido, apagarHistorico } from '../lib/watchLog'
 import TopBar from '../components/TopBar'
 import SubTabs from '../components/SubTabs'
 import SectionLabel from '../components/SectionLabel'
+import { SkeletonEpisodeRows } from '../components/SkeletonShapes'
 import { ChevronRight, Check } from 'lucide-react'
 
 const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000
@@ -483,7 +484,7 @@ export default function SeriesPage() {
 
       {/* pb-24, relative e Ref adicionadas para garantir o scroll correto e o respiro do menu */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-area pb-24 relative">
-        {carregando && <div className="p-4 text-muted text-sm font-mono">Carregando…</div>}
+        {carregando && <SkeletonEpisodeRows count={4} />}
 
         {!carregando && aba === 'lista' && (
           <>
@@ -493,15 +494,17 @@ export default function SeriesPage() {
                 <SectionLabel>Histórico de exibição</SectionLabel>
                 <div className="flex flex-col gap-2.5 px-4 pb-4">
                   {historico.map((h, i) => (
-                    <div 
-                      key={`${h.episode.id}-${i}`} 
-                      className="opacity-40 hover:opacity-75 transition-all duration-300"
+                    <div
+                      key={`${h.episode.id}-${i}`}
+                      className="hover:opacity-90 transition-all duration-300"
                     >
                       <div className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between">
                         {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
-                        <div
+                        <button
+                          type="button"
                           onClick={() => navigate(`/episodio/${h.episode.id}`)}
-                          className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                          aria-label={h.episode.titulo?.nome ? `Abrir episódio de ${h.episode.titulo.nome}` : 'Abrir episódio'}
+                          className="block appearance-none p-0 border-0 text-left bg-transparent w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0"
                         >
                           {h.episode.titulo?.imagem && (
                             <img
@@ -509,10 +512,10 @@ export default function SeriesPage() {
                               alt=""
                               loading="lazy"
                               decoding="async"
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover grayscale opacity-70"
                             />
                           )}
-                        </div>
+                        </button>
 
                         {/* Centro: Informações do Episódio */}
                         <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -572,9 +575,11 @@ export default function SeriesPage() {
                   }`}
                 >
                   {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
-                  <div
+                  <button
+                    type="button"
                     onClick={() => navigate(`/episodio/${l.episodeId}`)}
-                    className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                    aria-label={l.tituloNome ? `Abrir episódio de ${l.tituloNome}` : 'Abrir episódio'}
+                    className="block appearance-none p-0 border-0 text-left bg-transparent w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0"
                   >
                     {l.imagem && (
                       <img
@@ -585,7 +590,7 @@ export default function SeriesPage() {
                         className="w-full h-full object-cover"
                       />
                     )}
-                  </div>
+                  </button>
 
                   {/* Centro: Informações do Episódio */}
                   <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -598,7 +603,7 @@ export default function SeriesPage() {
                         {l.tituloNome} <ChevronRight size={10} strokeWidth={3} />
                       </button>
                     </div>
-                    
+
                     {/* Temporada e Episódio (Navega para a tela EpisodioDetalhe) */}
                     <button
                       onClick={() => navigate(`/episodio/${l.episodeId}`)}
@@ -639,9 +644,11 @@ export default function SeriesPage() {
                       }`}
                     >
                       {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
-                      <div
+                      <button
+                        type="button"
                         onClick={() => navigate(`/episodio/${l.episodeId}`)}
-                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                        aria-label={l.tituloNome ? `Abrir episódio de ${l.tituloNome}` : 'Abrir episódio'}
+                        className="block appearance-none p-0 border-0 text-left bg-transparent w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0"
                       >
                         {l.imagem && (
                           <img
@@ -652,7 +659,7 @@ export default function SeriesPage() {
                             className="w-full h-full object-cover"
                           />
                         )}
-                      </div>
+                      </button>
 
                       {/* Centro: Informações do Episódio */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -719,9 +726,11 @@ export default function SeriesPage() {
                       className="bg-surface border border-white/5 rounded-2xl p-3 flex gap-3 items-center justify-between"
                     >
                       {/* Lado Esquerdo: Poster (Navega para a tela EpisodioDetalhe) */}
-                      <div
+                      <button
+                        type="button"
                         onClick={() => navigate(`/episodio/${e.id}`)}
-                        className="w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0 cursor-pointer"
+                        aria-label={e.titulo?.nome ? `Abrir episódio de ${e.titulo.nome}` : 'Abrir episódio'}
+                        className="block appearance-none p-0 border-0 text-left bg-transparent w-14 aspect-[2/3] rounded-xl bg-surface2 overflow-hidden flex-shrink-0"
                       >
                         {e.titulo?.imagem && (
                           <img
@@ -732,7 +741,7 @@ export default function SeriesPage() {
                             className="w-full h-full object-cover"
                           />
                         )}
-                      </div>
+                      </button>
 
                       {/* Centro: Metadados do Episódio com fontes display fortes */}
                       <div className="flex-1 flex flex-col justify-center min-w-0">
